@@ -196,6 +196,10 @@ class RingImageQLabel(QtGui.QLabel):
         if self._dnaimage is not None and self._boudaries is None:
             logger.debug("computing nuclei boundaries")
             lbl, self._boudaries = m.nuclei_segmentation(self._dnaimage, simp_px=self.pix_per_um / 4)
+            self._boudaries = m.exclude_contained(self._boudaries)
+
+            for n in self._boudaries:  # TODO: change selection feedback mechanism for something more elegant
+                n["selected"] = False
 
         if self._boudaries is not None:
             pt = Point(x, y)
@@ -260,6 +264,15 @@ class RingImageQLabel(QtGui.QLabel):
                     if me != self.selectedLine:
                         lineChanged = True
                         break
+
+        # check if pointer clicked inside any nuclei
+        # TODO: change selection feedback mechanism for something more elegant
+        if self._boudaries is not None:
+            pt = Point(x, y)
+            for nucleus in self._boudaries:
+                if nucleus["boundary"].contains(pt):
+                    logger.debug(f"nucleus {nucleus['id']} selected by clicking.")
+                    nucleus["selected"] = True
 
         if anyLineSelected and not lineChanged and not self.measureLocked:
             self.clicked.emit()
@@ -351,10 +364,17 @@ class RingImageQLabel(QtGui.QLabel):
             nuc_pen = QPen(QBrush(QColor('red')), 2)
             nuc_pen.setStyle(QtCore.Qt.DotLine)
             painter.setPen(nuc_pen)
-            for n in [e["boundary"] for e in self._boudaries]:
+            for e in self._boudaries:
+                n = e["boundary"]
+                if e["selected"]:  # TODO: change selection feedback mechanism for something more elegant
+                    brush = QBrush(QtCore.Qt.BDiagPattern)
+                    brush.setColor(QColor('yellow'))
+                    painter.setBrush(brush)
+
                 # get nuclei boundary as a polygon
                 nucb_qpoints = [Qt.QPoint(x, y) for x, y in n.exterior.coords]
                 painter.drawPolygon(Qt.QPolygon(nucb_qpoints))
+                painter.setBrush(QBrush(QtCore.Qt.NoBrush))
 
         for me in self.measurements:
             painter.setPen(
