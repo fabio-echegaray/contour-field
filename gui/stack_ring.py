@@ -172,8 +172,10 @@ class StkRingWidget(QWidget):
 
             self._nucboundaries.append(nucbnd)
 
-    def drawMeasurements(self):
+    def drawMeasurements(self, erase_bkg=False):
         if not self.render: return
+        if erase_bkg:
+            self._repainImages()
         for i in range(self.zstacks):
             painter = QPainter()
             painter.begin(self.images[i].pixmap())

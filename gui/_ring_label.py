@@ -361,7 +361,7 @@ class RingImageQLabel(QtGui.QLabel):
             painter.drawPolygon(nucb_poly)
 
         elif self.activeCh == "act":
-            nuc_pen = QPen(QBrush(QColor('red')), 2)
+            nuc_pen = QPen(QBrush(QColor('red')), self.dwidth / 256)
             nuc_pen.setStyle(QtCore.Qt.DotLine)
             painter.setPen(nuc_pen)
             for e in self._boudaries:

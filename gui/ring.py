@@ -113,6 +113,7 @@ class RingWindow(QMainWindow):
         # super(RingWindow, self).mouseMoveEvent(event)
 
     def closeEvent(self, event):
+        self._saveCurrentFileMeasurements()
         if not self.df.empty:
             self.df.loc[:, "condition"] = self.ctrl.experimentLineEdit.text()
             self.df.loc[:, "l"] = self.df.loc[:, "l"].apply(lambda v: np.array2string(v, separator=','))
@@ -129,6 +130,14 @@ class RingWindow(QMainWindow):
 
     def showEvent(self, event):
         self.setFocus()
+
+    def _saveCurrentFileMeasurements(self):
+        if not self.df.empty:
+            fname = os.path.basename(self.image.file)
+            df = self.df[self.df["file"] == fname]
+            df.loc[:, "condition"] = self.ctrl.experimentLineEdit.text()
+            df.loc[:, "l"] = self.df.loc[:, "l"].apply(lambda v: np.array2string(v, separator=','))
+            df.to_csv(os.path.join(os.path.dirname(self.image.file), f"{fname}.csv"))
 
     def _graphTendency(self):
         df = pd.DataFrame(self.image.measurements).drop(['x', 'y', 'c', 'ls0', 'ls1', 'd', 'sum'], axis=1)
@@ -169,6 +178,10 @@ class RingWindow(QMainWindow):
     @QtCore.pyqtSlot()
     def onOpenButton(self):
         logger.debug('onOpenButton')
+
+        # save current file measurements as a backup
+        self._saveCurrentFileMeasurements()
+
         qfd = QtGui.QFileDialog()
         path = os.path.dirname(self.file)
         if self.image.file is not None:
@@ -186,6 +199,7 @@ class RingWindow(QMainWindow):
             self.currN = None
             self.currZ = None
 
+            self.stk.close()
             self.stk = StkRingWidget(linePicked=self.onLinePickedFromStackGraph,
                                      stacks=self.image.nZstack,
                                      n_channels=self.image.nChannels,
@@ -207,9 +221,10 @@ class RingWindow(QMainWindow):
         self.ctrl.renderChk.setChecked(True)
         self.stk.selectedN = self.image.selectedLine['n'] if self.image.selectedLine is not None else 0
         logger.debug(f"onImgUpdate. Selected line is {self.stk.selectedN}")
-        self.stk.loadImages(self.image.images, xy=[n[0] for n in self.image.currNucleus.centroid.xy],
-                            wh=(30 * self.image.pix_per_um, 30 * self.image.pix_per_um))
-        self.stk.drawMeasurements()
+        try:
+            self.stk.drawMeasurements(erase_bkg=True)
+        except Exception as e:
+            logger.error(e)
         self._graph()
 
     @QtCore.pyqtSlot()
@@ -325,6 +340,11 @@ class RingWindow(QMainWindow):
             self.stk.selectedN = self.currN
             self.stk.selectedZ = self.currZ
 
+            try:
+                self.stk.drawMeasurements(erase_bkg=True)
+            except Exception as e:
+                logger.error(e)
+
             self.statusbar.showMessage("line %d selected" % self.selectedLine)
 
     @QtCore.pyqtSlot()
@@ -336,8 +356,8 @@ class RingWindow(QMainWindow):
             self.currN = self.stk.selectedN
             self.currZ = self.stk.selectedZ
 
-            self.statusbar.showMessage(f"line {self.selectedLine} selected {self.stk.selectedLine}")
-            logger.info(f"line {self.selectedLine} selected.")
+            self.statusbar.showMessage(f"line {self.currN} of z-stack {self.currZ} selected.")
+            logger.info(f"line {self.currN} of z-stack {self.currZ} selected.")
 
     @QtCore.pyqtSlot()
     def onLinePickedFromImage(self):

@@ -67,7 +67,8 @@ def load_zeiss(path):
         for sb in czi.subblock_directory:
             images.append(sb.data_segment().data().reshape((n_X, n_Y)))
 
-        logger.info(f"loaded {czi._fh.name}. channels: {n_channels}, frames: {n_frames}, stacks: {n_zstacks}")
+        logger.info(
+            f"loaded {czi._fh.name}. WxH({n_X},{n_Y}), channels: {n_channels}, frames: {n_frames}, stacks: {n_zstacks}")
         return np.array(images), 1 / res, dt, n_frames, n_channels  # , n_zstacks
 
 
