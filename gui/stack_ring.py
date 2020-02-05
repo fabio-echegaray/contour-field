@@ -95,6 +95,16 @@ class StkRingWidget(QWidget):
     def showEvent(self, event):
         self.setFocus()
 
+    def mouseReleaseEvent(self, ev):
+        for k, im in enumerate(self.images):
+            if im.underMouse():
+                logger.info(f"image {k} clicked.")
+                self.selectedZ = k
+                self.linePicked.emit()
+
+        self._repainImages()
+        self.drawMeasurements()
+
     def _repainImages(self):
         for i in range(len(self._pixmaps)):
             self.images[i].setPixmap(self._pixmaps[i])

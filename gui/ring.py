@@ -337,7 +337,7 @@ class RingWindow(QMainWindow):
             self.currZ = self.stk.selectedZ
 
             self.statusbar.showMessage(f"line {self.selectedLine} selected {self.stk.selectedLine}")
-            logger.info(f"line {self.selectedLine} selected {self.stk.selectedLine}")
+            logger.info(f"line {self.selectedLine} selected.")
 
     @QtCore.pyqtSlot()
     def onLinePickedFromImage(self):
