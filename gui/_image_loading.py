@@ -47,7 +47,7 @@ def load_zeiss(path):
         # next line is somewhat cryptic, but just extracts um/pix (calibration) of X and Y into res
         res = [float(i[0].text) for i in meta.findall('.//Scaling/Items/*') if
                i.attrib['Id'] == 'X' or i.attrib['Id'] == 'Y']
-        assert res[0] == res[1], "pixels are not square"
+        assert np.isclose(res[0], res[1]), "pixels are not square"
 
         # get first calibration value and convert it from meters to um
         res = res[0] * 1e6
@@ -67,6 +67,7 @@ def load_zeiss(path):
         for sb in czi.subblock_directory:
             images.append(sb.data_segment().data().reshape((n_X, n_Y)))
 
+        logger.info(f"loaded {czi._fh.name}. channels: {n_channels}, frames: {n_frames}, stacks: {n_zstacks}")
         return np.array(images), 1 / res, dt, n_frames, n_channels  # , n_zstacks
 
 

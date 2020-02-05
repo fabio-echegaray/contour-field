@@ -30,6 +30,7 @@ class RingImageQLabel(QtGui.QLabel):
     clicked = Qt.pyqtSignal()
     lineUpdated = Qt.pyqtSignal()
     linePicked = Qt.pyqtSignal()
+    nucleusPicked = Qt.pyqtSignal()
 
     def __init__(self, parent, file=None):
         QtGui.QLabel.__init__(self, parent)
@@ -62,7 +63,8 @@ class RingImageQLabel(QtGui.QLabel):
         self._boudaries = None
 
         self._render = True
-        self.selNuc = None
+        self._selNuc = None
+        self.currNucleus = None
         self.measurements = None
         self.mousePos = Qt.QPoint(0, 0)
         self._selectedLine = None
@@ -124,8 +126,8 @@ class RingImageQLabel(QtGui.QLabel):
                                                 zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
                 self._actimage = retrieve_image(self.images, channel=self._actch, number_of_channels=self.nChannels,
                                                 zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
-            if self.selNuc is not None:
-                p = self.selNuc.centroid
+            if self._selNuc is not None:
+                p = self._selNuc.centroid
                 self._measure(p.x, p.y)
             self._repaint()
 
@@ -142,8 +144,8 @@ class RingImageQLabel(QtGui.QLabel):
                 self._dnaimage = retrieve_image(self.images, channel=self._dnach, number_of_channels=self.nChannels,
                                                 zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
                 self._boudaries = None
-                if self.selNuc is not None:
-                    p = self.selNuc.centroid
+                if self._selNuc is not None:
+                    p = self._selNuc.centroid
                     self._measure(p.x, p.y)
                     if self.activeCh == "dna":
                         self._repaint()
@@ -187,7 +189,7 @@ class RingImageQLabel(QtGui.QLabel):
 
     def _repaint(self):
         self.dataHasChanged = True
-        self.repaint()
+        self.update()
 
     def _measure(self, x, y):
         self.measurements = None
@@ -200,10 +202,17 @@ class RingImageQLabel(QtGui.QLabel):
 
             for nucleus in self._boudaries:
                 if nucleus["boundary"].contains(pt):
-                    self.selNuc = nucleus["boundary"]
+                    nucbnd = (nucleus["boundary"]
+                              .buffer(0.1 * self.pix_per_um, join_style=1)
+                              .buffer(-0.1 * self.pix_per_um, join_style=1)
+                              )
 
-            if self.selNuc is None: return
-            lines = m.measure_lines_around_polygon(self._actimage, self.selNuc, rng_thick=4, dl=self.dl,
+                    self._selNuc = nucbnd
+                    self.currNucleus = nucbnd
+                    self.emit(QtCore.SIGNAL('nucleusPicked()'))
+
+            if self._selNuc is None: return
+            lines = m.measure_lines_around_polygon(self._actimage, self._selNuc, rng_thick=4, dl=self.dl,
                                                    n_lines=_nlin, pix_per_um=self.pix_per_um)
             self.measurements = list()
             for k, ((ls, l), colr) in enumerate(zip(lines, itertools.cycle(_colors))):
@@ -259,7 +268,7 @@ class RingImageQLabel(QtGui.QLabel):
         else:
             self.measureLocked = False
             self.selectedLine = None
-            self.selNuc = None
+            self._selNuc = None
             self._measure(x, y)
             self._repaint()
             self.clicked.emit()
@@ -312,7 +321,7 @@ class RingImageQLabel(QtGui.QLabel):
         return QtGui.QLabel.paintEvent(self, event)
 
     def _drawMeasurements(self):
-        if self.selNuc is None: return
+        if self._selNuc is None: return
 
         painter = QPainter()
         painter.begin(self.imagePixmap)
@@ -323,8 +332,8 @@ class RingImageQLabel(QtGui.QLabel):
 
         if self.activeCh == "dna":
             # get nuclei boundary as a polygon
-            nucb_qpoints_e = [Qt.QPoint(x, y) for x, y in self.selNuc.buffer(rng_thick).exterior.coords]
-            nucb_qpoints_i = [Qt.QPoint(x, y) for x, y in self.selNuc.exterior.coords]
+            nucb_qpoints_e = [Qt.QPoint(x, y) for x, y in self._selNuc.buffer(rng_thick).exterior.coords]
+            nucb_qpoints_i = [Qt.QPoint(x, y) for x, y in self._selNuc.exterior.coords]
 
             painter.setPen(QPen(QBrush(QColor('white')), 3))
             painter.drawPolygon(Qt.QPolygon(nucb_qpoints_i))
@@ -356,7 +365,7 @@ class RingImageQLabel(QtGui.QLabel):
         painter.end()
 
     def drawMeasurements(self, ax, pal):
-        if self.selNuc is None: return
+        if self._selNuc is None: return
         from matplotlib import cm
         from shapely import affinity
         import plots as p
@@ -378,7 +387,7 @@ class RingImageQLabel(QtGui.QLabel):
                     linewidth=1, linestyle='-', color=c, alpha=1)
 
         w = 20
-        c = self.selNuc.centroid
+        c = self._selNuc.centroid
         x0, y0 = c.x / self.pix_per_um - w, c.y / self.pix_per_um - w
         ax.set_xlim([x0, x0 + 2 * w])
         ax.set_ylim([y0, y0 + 2 * w])
