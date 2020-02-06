@@ -5,6 +5,7 @@ import xml.etree.ElementTree
 import numpy as np
 import skimage.external.tifffile as tf
 from czifile import CziFile
+from PyQt4 import QtGui
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,6 @@ def load_tiff(path):
                 else:
                     images = [tif.pages[0].asarray()]
             elif len(tif.pages) > 1:
-                # frames = np.ndarray((len(tif.pages), tif.pages[0].image_length, tif.pages[0].image_width), dtype=np.int32)
                 images = list()
                 for i, page in enumerate(tif.pages):
                     images.append(page.asarray())
@@ -60,15 +60,15 @@ def load_zeiss(path):
         n_frames = czi.shape[ax_dct['T']]
         n_channels = czi.shape[ax_dct['C']]
         n_zstacks = czi.shape[ax_dct['Z']]
-        n_X = czi.shape[ax_dct['X']]
-        n_Y = czi.shape[ax_dct['Y']]
+        n_x = czi.shape[ax_dct['X']]
+        n_y = czi.shape[ax_dct['Y']]
 
         images = list()
         for sb in czi.subblock_directory:
-            images.append(sb.data_segment().data().reshape((n_X, n_Y)))
+            images.append(sb.data_segment().data().reshape((n_x, n_y)))
 
         logger.info(
-            f"loaded {czi._fh.name}. WxH({n_X},{n_Y}), channels: {n_channels}, frames: {n_frames}, stacks: {n_zstacks}")
+            f"loaded {czi._fh.name}. WxH({n_x},{n_y}), channels: {n_channels}, frames: {n_frames}, stacks: {n_zstacks}")
         return np.array(images), 1 / res, dt, n_frames, n_channels  # , n_zstacks
 
 
@@ -100,3 +100,12 @@ def image_iterator(image_arr, channel=0, number_of_frames=1):
         ix = f * n_channels + channel
         logger.debug("retrieving frame %d of channel %d (index=%d)" % (f, channel, ix))
         if ix < nimgs: yield image_arr[ix]
+
+
+def qpixmap_from(image: np.array):
+    dwidth, dheight = image.shape
+
+    # map the data range to 0 - 255
+    img_8bit = ((image - image.min()) / (image.ptp() / 255.0)).astype(np.uint8)
+    qimg = QtGui.QImage(img_8bit.repeat(4), dwidth, dheight, QtGui.QImage.Format_RGB32)
+    return QtGui.QPixmap(qimg)

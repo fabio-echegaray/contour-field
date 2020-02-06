@@ -9,7 +9,7 @@ from PyQt4.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
 from shapely.geometry.point import Point
 from skimage import draw
 
-from gui._image_loading import find_image, retrieve_image
+from gui._image_loading import find_image, retrieve_image, qpixmap_from
 import measurements as m
 
 logger = logging.getLogger('gui.ring.label')
@@ -31,6 +31,7 @@ class RingImageQLabel(QtGui.QLabel):
     lineUpdated = Qt.pyqtSignal()
     linePicked = Qt.pyqtSignal()
     nucleusPicked = Qt.pyqtSignal()
+    dl = 0.05
 
     def __init__(self, parent, file=None):
         QtGui.QLabel.__init__(self, parent)
@@ -48,7 +49,6 @@ class RingImageQLabel(QtGui.QLabel):
         self.pix_per_um = None
         self.um_per_pix = None
         self.dt = None
-        self.dl = 0.05
         self.nFrames = None
         self.nChannels = None
         self.nZstack = None
@@ -60,6 +60,8 @@ class RingImageQLabel(QtGui.QLabel):
 
         self._dnaimage = None
         self._actimage = None
+        self._dnapixmap = None
+        self._actpixmap = None
         self._boudaries = None
 
         self._render = True
@@ -126,6 +128,11 @@ class RingImageQLabel(QtGui.QLabel):
                                                 zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
                 self._actimage = retrieve_image(self.images, channel=self._actch, number_of_channels=self.nChannels,
                                                 zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
+                self._dnapixmap = qpixmap_from(self._dnaimage)
+                self._actpixmap = qpixmap_from(self._actimage)
+
+                self.dwidth, self.dheight = self._dnaimage.shape
+
             if self._selNuc is not None:
                 p = self._selNuc.centroid
                 self._measure(p.x, p.y)
@@ -143,6 +150,10 @@ class RingImageQLabel(QtGui.QLabel):
             if self.file is not None:
                 self._dnaimage = retrieve_image(self.images, channel=self._dnach, number_of_channels=self.nChannels,
                                                 zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
+                self._dnapixmap = qpixmap_from(self._dnaimage)
+
+                self.dwidth, self.dheight = self._dnaimage.shape
+
                 self._boudaries = None
                 if self._selNuc is not None:
                     p = self._selNuc.centroid
@@ -162,6 +173,10 @@ class RingImageQLabel(QtGui.QLabel):
             if self.file is not None:
                 self._actimage = retrieve_image(self.images, channel=self._actch, number_of_channels=self.nChannels,
                                                 zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
+                self._actpixmap = qpixmap_from(self._actimage)
+
+                self.dwidth, self.dheight = self._actimage.shape
+
                 if self.activeCh == "act":
                     self._repaint()
 
@@ -207,8 +222,9 @@ class RingImageQLabel(QtGui.QLabel):
             for nucleus in self._boudaries:
                 if nucleus["boundary"].contains(pt):
                     nucbnd = (nucleus["boundary"]
-                              .buffer(0.1 * self.pix_per_um, join_style=1)
-                              .buffer(-0.1 * self.pix_per_um, join_style=1)
+                              .buffer(self.pix_per_um * self.pix_per_um, join_style=1)
+                              .simplify(self.pix_per_um / 10, preserve_topology=True)
+                              .buffer(-self.pix_per_um * self.pix_per_um, join_style=1)
                               )
 
                     self._selNuc = nucbnd
@@ -220,9 +236,10 @@ class RingImageQLabel(QtGui.QLabel):
                                                    n_lines=_nlin, pix_per_um=self.pix_per_um)
             self.measurements = list()
             for k, ((ls, l), colr) in enumerate(zip(lines, itertools.cycle(_colors))):
-                self.measurements.append({'n': k, 'x': x, 'y': y, 'l': l, 'c': colr,
-                                          'ls0': ls.coords[0], 'ls1': ls.coords[1],
-                                          'd': max(l) - min(l), 'sum': np.sum(l)})
+                if ls is not None:
+                    self.measurements.append({'n': k, 'x': x, 'y': y, 'l': l, 'c': colr,
+                                              'ls0': ls.coords[0], 'ls1': ls.coords[1],
+                                              'd': max(l) - min(l), 'sum': np.sum(l)})
 
     def mouseMoveEvent(self, event):
         # logger.debug('mouseMoveEvent')
@@ -309,24 +326,19 @@ class RingImageQLabel(QtGui.QLabel):
         return
 
     def resizeEvent(self, QResizeEvent):
-        # this is a hack to resize everithing when the user resizes the main window
+        # this is a hack to resize everything when the user resizes the main window
         if self.dwidth == 0: return
         ratio = self.dheight / self.dwidth
         self.setFixedWidth(self.width())
         self.setFixedHeight(int(self.width()) * ratio)
 
+    # @profile
     def paintEvent(self, event):
         if self.dataHasChanged:
             self.dataHasChanged = False
-            ch = self.actChannel if self.activeCh == "act" else self.dnaChannel
-            data = retrieve_image(self.images, channel=ch, number_of_channels=self.nChannels,
-                                  zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
-            self.dwidth, self.dheight = data.shape
+            qpixmap = self._actpixmap if self.activeCh == "act" else self._dnapixmap
 
-            # map the data range to 0 - 255
-            img_8bit = ((data - data.min()) / (data.ptp() / 255.0)).astype(np.uint8)
-            qtimage = QtGui.QImage(img_8bit.repeat(4), self.dwidth, self.dheight, QtGui.QImage.Format_RGB32)
-            self.imagePixmap = QPixmap(qtimage)
+            self.imagePixmap = qpixmap.copy()
             if self.render:
                 self._drawMeasurements()
             self.setPixmap(self.imagePixmap)

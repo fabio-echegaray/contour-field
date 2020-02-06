@@ -7,9 +7,10 @@ from typing import List
 import numpy as np
 import seaborn as sns
 from PyQt4 import Qt, QtCore, QtGui
-from PyQt4.QtCore import QRect
+from PyQt4.QtCore import QRect, QTimer
 from PyQt4.QtGui import QLabel, QWidget
 from PyQt4.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
+from shapely.geometry.point import Point
 
 from gui._widget_graph import GraphWidget
 from gui._image_loading import retrieve_image
@@ -23,7 +24,7 @@ class StkRingWidget(QWidget):
     linePicked = Qt.pyqtSignal()
 
     def __init__(self, parent=None, stacks=5, n_channels=None, dna_ch=None, rng_ch=None, pix_per_um=None,
-                 line_length=None, lines_to_measure=1, **kwargs):
+                 line_length=4, dl=0.05, lines_to_measure=1, **kwargs):
         super().__init__(parent, **kwargs)
         path = os.path.join(sys.path[0], __package__)
 
@@ -44,7 +45,8 @@ class StkRingWidget(QWidget):
         self.nChannels = n_channels
         self.zstacks = stacks
         self.nlines = lines_to_measure
-        self.dl = line_length
+        self.dl = dl
+        self.line_length = line_length
         self.pix_per_um = pix_per_um
 
         self.measurements = None
@@ -60,9 +62,12 @@ class StkRingWidget(QWidget):
         # graph widget
         self.grph = GraphWidget()
         self.grph.setWindowTitle('Selected line across stack')
+        self.grphtimer = QTimer()
+        self.grphtimer.setSingleShot(True)
 
         self.grph.linePicked.connect(self.onLinePickedFromGraph)
         self.grph.linePicked.connect(self.linePicked)
+        self.grphtimer.timeout.connect(self._graph)
 
         self.setWindowTitle('Stack images')
         self.grph.show()
@@ -78,11 +83,7 @@ class StkRingWidget(QWidget):
 
         dw = self.grph.width()
         dh = self.grph.height()
-        # self.setGeometry(px, py, pw, ph)
-        # logger.debug("stack win size " + str(self.geometry()))
-        # logger.debug("graph win size prev " + str(self.grph.geometry()))
         self.grph.setGeometry(px, py + ph + 20, pw, dh)
-        # logger.debug("graph win size after " + str(self.grph.geometry()))
 
     def closeEvent(self, event):
         self.grph.close()
@@ -151,31 +152,42 @@ class StkRingWidget(QWidget):
                                     zstack=i, number_of_zstacks=self.zstacks, frame=0)
             width, height = dnaimg.shape
             x, y = int(width / 2), int(height / 2)
+            center_pt = Point(x, y)
             lbl, boundaries = m.nuclei_segmentation(dnaimg, simp_px=self.pix_per_um / 4)
 
             if boundaries is not None:
                 nucbnd = (boundaries[0]["boundary"]
-                          .buffer(0.1 * self.pix_per_um, join_style=1)
-                          .buffer(-0.1 * self.pix_per_um, join_style=1)
+                          .buffer(self.pix_per_um * self.pix_per_um, join_style=1)
+                          .simplify(self.pix_per_um / 10, preserve_topology=True)
+                          .buffer(-self.pix_per_um * self.pix_per_um, join_style=1)
                           )
+
                 ring = retrieve_image(self._images, channel=self.rngChannel, number_of_channels=self.nChannels,
                                       zstack=i, number_of_zstacks=self.zstacks, frame=0)
 
-                lines = m.measure_lines_around_polygon(ring, nucbnd, rng_thick=4, dl=self.dl,
-                                                       n_lines=self.nlines, pix_per_um=self.pix_per_um)
+                # measurements around polygon are done from the centroid used to crop all the z-stack
+                lines = m.measure_lines_around_polygon(ring, nucbnd, from_pt=center_pt, radius=int(width / 2),
+                                                       rng_thick=self.line_length, dl=self.dl, n_lines=self.nlines,
+                                                       pix_per_um=self.pix_per_um)
                 for k, ((ls, l), colr) in enumerate(zip(lines, itertools.cycle(self._colors))):
-                    self.measurements.append({'n': k, 'x': x, 'y': y, 'z': i, 'l': l, 'c': colr,
-                                              'ls0': ls.coords[0], 'ls1': ls.coords[1],
-                                              'd': max(l) - min(l), 'sum': np.sum(l)})
+                    if ls is not None:
+                        self.measurements.append({'n': k, 'x': x, 'y': y, 'z': i, 'l': l, 'c': colr,
+                                                  'ls0': ls.coords[0], 'ls1': ls.coords[1],
+                                                  'd': max(l) - min(l), 'sum': np.sum(l)})
+                logger.debug(f"{len(self.measurements)} lines obtained.")
             else:
                 nucbnd = None
 
             self._nucboundaries.append(nucbnd)
 
+    # @profile
     def drawMeasurements(self, erase_bkg=False):
-        if not self.render: return
+        if not self.render or not self._nucboundaries: return
         if erase_bkg:
             self._repainImages()
+        angle_delta = 2 * np.pi / self.nlines
+        nim, width, height = self._images.shape
+
         for i in range(self.zstacks):
             painter = QPainter()
             painter.begin(self.images[i].pixmap())
@@ -186,11 +198,19 @@ class StkRingWidget(QWidget):
             painter.setPen(nuc_pen)
 
             n = self._nucboundaries[i]
+            if not n: continue
             # get nuclei boundary as a polygon
             nucb_qpoints = [Qt.QPoint(x, y) for x, y in n.exterior.coords]
             painter.drawPolygon(Qt.QPolygon(nucb_qpoints))
 
             if self.selectedN is not None:
+                alpha = angle_delta * self.selectedN
+                x, y = int(width / 2), int(height / 2)
+                a = int(width / 2)
+                pt1 = Qt.QPoint(x, y)
+                pt2 = Qt.QPoint(a * np.cos(alpha) + x, a * np.sin(alpha) + y)
+                painter.drawLine(pt1, pt2)
+
                 for me in self.measurements:
                     if me['n'] == self.selectedN:
                         if me['z'] == self.selectedZ and i == self.selectedZ:
@@ -202,7 +222,7 @@ class StkRingWidget(QWidget):
                         painter.drawLine(pts[0], pts[1])
 
             painter.end()
-        self._graph()
+        self.grphtimer.start(1000)
         self.update()
 
     def _graph(self, alpha=1.0):

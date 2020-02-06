@@ -311,7 +311,8 @@ def is_valid_sample(frame_polygon, cell_polygon, nuclei_polygon, nuclei_list=Non
     return True, None
 
 
-def measure_lines_around_polygon(image, polygon, pix_per_um=1, n_lines=3, rng_thick=3, dl=None):
+def measure_lines_around_polygon(image, polygon, from_pt=None, radius=None, pix_per_um=1, dl=None,
+                                 n_lines=3, rng_thick=3):
     width, height = image.shape
     rng_thick *= pix_per_um
     if dl is not None:
@@ -320,53 +321,63 @@ def measure_lines_around_polygon(image, polygon, pix_per_um=1, n_lines=3, rng_th
     frame = Polygon([(0, 0), (0, width), (height, width), (height, 0)]).buffer(-rng_thick)
 
     minx, miny, maxx, maxy = polygon.bounds
-    radius = max(maxx - minx, maxy - miny)
+    radius = radius if radius is not None else max(maxx - minx, maxy - miny)
+    center = from_pt if from_pt is not None else polygon.centroid
     for k, angle in enumerate([angle_delta * i for i in range(n_lines)]):
-        ray = LineString([polygon.centroid,
-                          (polygon.centroid.x + radius * np.cos(angle),
-                           polygon.centroid.y + radius * np.sin(angle))])
-        r_seg = ray.intersection(polygon)
+        ray = LineString([center,
+                          (center.x + radius * np.cos(angle),
+                           center.y + radius * np.sin(angle))])
+        pt = ray.intersection(polygon.exterior)
 
-        if r_seg.is_empty:
-            continue
-        if type(r_seg) == MultiLineString:
-            r_seg = r_seg[0]
+        if pt.is_empty or not frame.contains(pt):
+            yield None, None
 
-        pt = Point(r_seg.coords[-1])
-        if not frame.contains(pt):
-            continue
+        mpt = Point(rng_thick * np.cos(angle) / 2, rng_thick * np.sin(angle) / 2)
+        pt0 = Point(pt.x - mpt.x, pt.y - mpt.y)
+        pt1 = Point(pt.x + mpt.x, pt.y + mpt.y)
+        lin = LineString([pt0, pt1])
 
-        for pt0, pt1 in pairwise(polygon.exterior.coords):
-            # if pt.touches(LineString([pt0, pt1])):
-            if Point(pt).distance(LineString([pt0, pt1])) < 1e-6:
-                # compute normal vector
-                dx = pt1[0] - pt0[0]
-                dy = pt1[1] - pt0[1]
-                # touching point of the polygon line segment
-                px, py = pt.x, pt.y
-                # normalize normal vector
-                alpha = np.arctan2(dy, dx)
-                dx, dy = np.cos(alpha), np.sin(alpha)
+        rlin = lin
+        rlin = affinity.rotate(rlin, math.pi / 2, origin=pt0, use_radians=True)
+        rlin = affinity.scale(rlin, yfact=-1, origin=center)
+        rlin = affinity.rotate(rlin, math.pi / 2, origin=center, use_radians=True)
 
-                if dl is not None:
-                    nsteps = int(rng_thick / dl)
-                    x0 = px + dy * rng_thick / 2
-                    y0 = py - dx * rng_thick / 2
-                    _x = -dl * dy
-                    _y = dl * dx
-                    cc, rr = list(), list()
-                    for n in range(nsteps):
-                        # note that rows and cols are interchanged to account for another rotation
-                        rr.append(x0 + n * _x)
-                        cc.append(y0 + n * _y)
-                    rr = np.array(rr, dtype=np.int16)
-                    cc = np.array(cc, dtype=np.int16)
+        # if parameter dl is present, make measurements every dl (possibly hitting a pixel more than one time)
+        if dl is not None:
+            nsteps = int(rng_thick / dl)
+            (x0, y0), (x1, y1) = rlin.coords
+            alpha = np.arctan2(y1 - y0, x1 - x0)
+            dx, dy = np.cos(alpha), np.sin(alpha)
+            _x = -dl * dy
+            _y = dl * dx
+            cc, rr = list(), list()
+            for n in range(nsteps):
+                nx = x0 + n * _x
+                ny = y0 + n * _y
+                if nx <= width and ny <= height:
+                    rr.append(ny)
+                    cc.append(nx)
+            rr = np.array(rr, dtype=np.int16)
+            cc = np.array(cc, dtype=np.int16)
 
-                else:
-                    # note that rows and cols are interchanged to account for another rotation
-                    r0, c0, r1, c1 = np.array([px + dy * rng_thick / 2, py - dx * rng_thick / 2,
-                                               px - dy * rng_thick / 2, py + dx * rng_thick / 2]).astype(int)
-                    rr, cc = draw.line(r0, c0, r1, c1)
-                lin = LineString([(rr[0], cc[0]), (rr[-1], cc[-1])])
+        else:
+            logger.warning("line measurement not equally spaced.")
+            (c0, r0), (c1, r1) = rlin.coords
+            r0, c0, r1, c1 = np.array([r0, c0, r1, c1]).astype(int)
+            rr, cc = draw.line(r0, c0, r1, c1)
 
-                yield lin, image[cc, rr]
+        # code to test if measurement is within the line
+        # import matplotlib.pyplot as plt
+        # import plots as p
+        # rrr, ccc = draw.circle(center.x, center.y, 2)
+        # image[ccc, rrr] = 255
+        # image[cc, rr] = 255
+        #
+        # ax = plt.gca()
+        # plt.imshow(image, origin='lower')
+        # # n_um = affinity.scale(n, xfact=self.um_per_pix, yfact=self.um_per_pix, origin=(0, 0, 0))
+        # p.render_polygon(polygon, zorder=10, ax=ax)
+        # ax.plot([pt0.x, pt1.x], [pt0.y, pt1.y], linewidth=1, linestyle='-')
+        #
+        # plt.show()
+        yield lin, image[cc, rr]

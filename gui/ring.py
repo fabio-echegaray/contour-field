@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from PyQt4 import QtCore, QtGui, uic
+from PyQt4.QtCore import QTimer
 from PyQt4.QtGui import QMainWindow, QWidget
 import matplotlib.ticker as ticker
 from matplotlib.ticker import EngFormatter
@@ -57,12 +58,15 @@ class RingWindow(QMainWindow):
 
         self.grph = GraphWidget()
         self.grph.show()
+        self.grphtimer = QTimer()
+        self.grphtimer.setSingleShot(True)
 
         self.stk = StkRingWidget(linePicked=self.onLinePickedFromStackGraph)
         self.stk.show()
 
         self.grph.linePicked.connect(self.onLinePickedFromGraph)
         # self.stk.linePicked.connect(self.onLinePickedFromStackGraph)
+        self.grphtimer.timeout.connect(self._graph)
 
         self.ctrl.setWindowFlags(self.ctrl.windowFlags() & ~QtCore.Qt.WindowStaysOnTopHint)
         self.grph.setWindowFlags(self.grph.windowFlags() & ~QtCore.Qt.WindowStaysOnTopHint)
@@ -73,6 +77,7 @@ class RingWindow(QMainWindow):
 
         self.measure_n = 0
         self.selectedLine = None
+        self.line_length = 4
 
         self.currMeasurement = None
         self.currN = None
@@ -114,10 +119,10 @@ class RingWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._saveCurrentFileMeasurements()
-        if not self.df.empty:
-            self.df.loc[:, "condition"] = self.ctrl.experimentLineEdit.text()
-            self.df.loc[:, "l"] = self.df.loc[:, "l"].apply(lambda v: np.array2string(v, separator=','))
-            self.df.to_csv(os.path.join(os.path.dirname(self.image.file), "ringlines.csv"))
+        # if not self.df.empty:
+        #     self.df.loc[:, "condition"] = self.ctrl.experimentLineEdit.text()
+        #     self.df.loc[:, "l"] = self.df.loc[:, "l"].apply(lambda v: np.array2string(v, separator=','))
+        #     self.df.to_csv(os.path.join(os.path.dirname(self.image.file), "ringlines.csv"))
         self.grph.close()
         self.ctrl.close()
         self.stk.close()
@@ -205,7 +210,8 @@ class RingWindow(QMainWindow):
                                      n_channels=self.image.nChannels,
                                      dna_ch=self.image.dnaChannel,
                                      rng_ch=self.image.actChannel,
-                                     line_length=self.image.dl,
+                                     line_length=self.line_length,
+                                     dl=self.image.dl,
                                      lines_to_measure=_nlin,
                                      pix_per_um=self.image.pix_per_um
                                      )
@@ -221,11 +227,8 @@ class RingWindow(QMainWindow):
         self.ctrl.renderChk.setChecked(True)
         self.stk.selectedN = self.image.selectedLine['n'] if self.image.selectedLine is not None else 0
         logger.debug(f"onImgUpdate. Selected line is {self.stk.selectedN}")
-        try:
-            self.stk.drawMeasurements(erase_bkg=True)
-        except Exception as e:
-            logger.error(e)
-        self._graph()
+        self.stk.drawMeasurements(erase_bkg=True)
+        self.grphtimer.start(1000)
 
     @QtCore.pyqtSlot()
     def onNucleusPickedFromImage(self):
@@ -236,11 +239,8 @@ class RingWindow(QMainWindow):
 
         self.stk.loadImages(self.image.images, xy=[n[0] for n in self.image.currNucleus.centroid.xy],
                             wh=(30 * self.image.pix_per_um, 30 * self.image.pix_per_um))
-        try:
-            self.stk.measure()
-            self.stk.drawMeasurements()
-        except Exception as e:
-            logger.error(e)
+        self.stk.measure()
+        self.stk.drawMeasurements()
 
     @QtCore.pyqtSlot()
     def onMeasureButton(self):
