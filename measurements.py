@@ -19,8 +19,6 @@ from shapely.geometry import Polygon, LineString
 from scipy.ndimage.morphology import distance_transform_edt
 from shapely.geometry.point import Point
 from shapely import affinity
-from shapely.wkt import dumps
-from shapely.geometry import LineString, MultiLineString, Polygon
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('hhlab')
@@ -317,6 +315,7 @@ def measure_lines_around_polygon(image, polygon, from_pt=None, radius=None, pix_
     rng_thick *= pix_per_um
     if dl is not None:
         dl *= pix_per_um
+    nsteps = int(rng_thick / dl)
     angle_delta = 2 * np.pi / n_lines
     frame = Polygon([(0, 0), (0, width), (height, width), (height, 0)]).buffer(-rng_thick)
 
@@ -331,42 +330,40 @@ def measure_lines_around_polygon(image, polygon, from_pt=None, radius=None, pix_
 
         if pt.is_empty or not frame.contains(pt):
             yield None, None
+            continue
 
-        mpt = Point(rng_thick * np.cos(angle) / 2, rng_thick * np.sin(angle) / 2)
-        pt0 = Point(pt.x - mpt.x, pt.y - mpt.y)
-        pt1 = Point(pt.x + mpt.x, pt.y + mpt.y)
+        # construct the line that will measure pixels
+        # that is, a line segment perpendicular to the boundary tangent (the normal vector)
+        for pt0, pt1 in pairwise(polygon.exterior.coords):
+            # if pt.touches(LineString([pt0, pt1])):
+            if Point(pt).distance(LineString([pt0, pt1])) < 1e-6:
+                # compute normal vector angle
+                dx = pt1[0] - pt0[0]
+                dy = pt1[1] - pt0[1]
+                alpha = np.arctan2(dy, dx)
+                break
+
+        # lin = LineString([Point(0, 0), Point(25, 25)])
+        pt0 = Point(pt.x - np.cos(alpha) * rng_thick / 2, pt.y - np.sin(alpha) * rng_thick / 2)
+        pt1 = Point(pt.x + np.cos(alpha) * rng_thick / 2, pt.y + np.sin(alpha) * rng_thick / 2)
         lin = LineString([pt0, pt1])
+        lin = affinity.rotate(lin, math.pi / 2, origin='centroid', use_radians=True)
 
-        rlin = lin
-        rlin = affinity.rotate(rlin, math.pi / 2, origin=pt0, use_radians=True)
-        rlin = affinity.scale(rlin, yfact=-1, origin=center)
-        rlin = affinity.rotate(rlin, math.pi / 2, origin=center, use_radians=True)
+        # reflection over line y=x. don't ask me why. (i think it might have to do with rr cc xx yy potential swap
+        rlin = affinity.affine_transform(lin, [0, 1, 1, 0, 0, 0])
 
         # if parameter dl is present, make measurements every dl (possibly hitting a pixel more than one time)
         if dl is not None:
-            nsteps = int(rng_thick / dl)
-            (x0, y0), (x1, y1) = rlin.coords
-            alpha = np.arctan2(y1 - y0, x1 - x0)
-            dx, dy = np.cos(alpha), np.sin(alpha)
-            _x = -dl * dy
-            _y = dl * dx
-            cc, rr = list(), list()
-            for n in range(nsteps):
-                nx = x0 + n * _x
-                ny = y0 + n * _y
-                if nx <= width and ny <= height:
-                    rr.append(ny)
-                    cc.append(nx)
-            rr = np.array(rr, dtype=np.int16)
-            cc = np.array(cc, dtype=np.int16)
-
+            cc, rr = np.array(
+                [rlin.interpolate((i / nsteps), normalized=True).coords.xy for i in range(nsteps + 1)],
+                dtype=np.int16).reshape(nsteps + 1, 2).T
         else:
             logger.warning("line measurement not equally spaced.")
             (c0, r0), (c1, r1) = rlin.coords
             r0, c0, r1, c1 = np.array([r0, c0, r1, c1]).astype(int)
             rr, cc = draw.line(r0, c0, r1, c1)
 
-        # code to test if measurement is within the line
+        # # code to test if measurement is within the line
         # import matplotlib.pyplot as plt
         # import plots as p
         # rrr, ccc = draw.circle(center.x, center.y, 2)
@@ -377,7 +374,9 @@ def measure_lines_around_polygon(image, polygon, from_pt=None, radius=None, pix_
         # plt.imshow(image, origin='lower')
         # # n_um = affinity.scale(n, xfact=self.um_per_pix, yfact=self.um_per_pix, origin=(0, 0, 0))
         # p.render_polygon(polygon, zorder=10, ax=ax)
-        # ax.plot([pt0.x, pt1.x], [pt0.y, pt1.y], linewidth=1, linestyle='-')
+        # ax.plot(*lin.xy, linewidth=1, linestyle='-', c='blue')
+        # # ax.plot(*rlin.xy, linewidth=1, linestyle='-', c='red')
+        # ax.plot(pt.x, pt.y, marker='o', markersize=5)
         #
         # plt.show()
         yield lin, image[cc, rr]

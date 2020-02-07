@@ -104,6 +104,7 @@ class StkRingWidget(QWidget):
                 self.linePicked.emit()
 
         self._repainImages()
+        self._graph()
         self.drawMeasurements()
 
     def _repainImages(self):
@@ -193,15 +194,18 @@ class StkRingWidget(QWidget):
             painter.begin(self.images[i].pixmap())
             painter.setRenderHint(QPainter.Antialiasing)
 
-            nuc_pen = QPen(QBrush(QColor('red')), 1.1)
-            nuc_pen.setStyle(QtCore.Qt.DotLine)
-            painter.setPen(nuc_pen)
-
             n = self._nucboundaries[i]
             if not n: continue
             # get nuclei boundary as a polygon
-            nucb_qpoints = [Qt.QPoint(x, y) for x, y in n.exterior.coords]
-            painter.drawPolygon(Qt.QPolygon(nucb_qpoints))
+            dl2 = self.line_length * self.pix_per_um / 2
+            nucb_qpoints_e = [Qt.QPoint(x, y) for x, y in n.buffer(dl2).exterior.coords]
+            nucb_qpoints_i = [Qt.QPoint(x, y) for x, y in n.buffer(-dl2).exterior.coords]
+
+            nuc_pen = QPen(QBrush(QColor('white')), 1.1)
+            nuc_pen.setStyle(QtCore.Qt.DotLine)
+            painter.setPen(nuc_pen)
+            painter.drawPolygon(Qt.QPolygon(nucb_qpoints_i))
+            painter.drawPolygon(Qt.QPolygon(nucb_qpoints_e))
 
             if self.selectedN is not None:
                 alpha = angle_delta * self.selectedN

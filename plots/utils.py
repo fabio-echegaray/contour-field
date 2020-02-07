@@ -96,7 +96,7 @@ def render_cell(nucleus, cell, centrosomes, base_zorder=0, ax=None):
     ax.set_axis_off()
 
 
-def render_polygon(polygon: Polygon, zorder=0, ax=None):
+def render_polygon(polygon: Polygon, zorder=0, c='red', ax=None):
     """
         These next two functions are taken from Sean Gillies
         https://sgillies.net/2010/04/06/painting-punctured-polygons-with-matplotlib.html
@@ -125,10 +125,10 @@ def render_polygon(polygon: Polygon, zorder=0, ax=None):
         ax = plt.gca()
 
     x, y = polygon.exterior.xy
-    ax.plot(x, y, color='red', linestyle="--", linewidth=0.5, solid_capstyle='round', zorder=zorder)
+    ax.plot(x, y, color=c, linestyle="--", linewidth=0.5, solid_capstyle='round', zorder=zorder)
 
     path = pathify(polygon)
-    patch = PathPatch(path, facecolor='none', edgecolor='red', hatch='/////', lw=0.01, zorder=zorder)
+    patch = PathPatch(path, facecolor='none', edgecolor=c, hatch='/////', lw=0.01, zorder=zorder)
 
     ax.add_patch(patch)
     ax.set_aspect(1.0)
