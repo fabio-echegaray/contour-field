@@ -123,6 +123,8 @@ class StkRingWidget(QWidget):
         x1, x2 = int(xy[0] - wh[0] / 2), int(xy[0] + wh[0] / 2)
         y1, y2 = int(xy[1] - wh[1] / 2), int(xy[1] + wh[1] / 2)
         self._images = images[:, y1:y2, x1:x2]
+        if self._images.size == 0:
+            logger.warning(f"empty cropped image! x1,x2,y1,y2 ({x1},{x2},{y1},{y2})")
 
         self._pixmaps = list()
 
@@ -144,9 +146,12 @@ class StkRingWidget(QWidget):
         return
 
     def measure(self):
-        self._nucboundaries = list()
-
+        if self._images.size == 0:
+            logger.warning("can't measure on an empty image!")
+            return
         logger.debug("computing nuclei boundaries")
+
+        self._nucboundaries = list()
         self.measurements = list()
         for i in range(self.zstacks):
             dnaimg = retrieve_image(self._images, channel=self.dnaChannel, number_of_channels=self.nChannels,
@@ -154,15 +159,10 @@ class StkRingWidget(QWidget):
             width, height = dnaimg.shape
             x, y = int(width / 2), int(height / 2)
             center_pt = Point(x, y)
-            lbl, boundaries = m.nuclei_segmentation(dnaimg, simp_px=self.pix_per_um / 4)
+            lbl, boundaries = m.nuclei_segmentation(dnaimg, simp_px=self.pix_per_um / 2)
 
             if boundaries is not None:
-                nucbnd = (boundaries[0]["boundary"]
-                          .buffer(self.pix_per_um * self.pix_per_um, join_style=1)
-                          .simplify(self.pix_per_um / 10, preserve_topology=True)
-                          .buffer(-self.pix_per_um * self.pix_per_um, join_style=1)
-                          )
-
+                nucbnd = [b["boundary"] for b in boundaries if center_pt.within(b["boundary"])][0]
                 ring = retrieve_image(self._images, channel=self.rngChannel, number_of_channels=self.nChannels,
                                       zstack=i, number_of_zstacks=self.zstacks, frame=0)
 
@@ -190,22 +190,26 @@ class StkRingWidget(QWidget):
         nim, width, height = self._images.shape
 
         for i in range(self.zstacks):
+            if i > len(self._nucboundaries) - 1: continue
+
             painter = QPainter()
             painter.begin(self.images[i].pixmap())
             painter.setRenderHint(QPainter.Antialiasing)
 
             n = self._nucboundaries[i]
             if not n: continue
-            # get nuclei boundary as a polygon
-            dl2 = self.line_length * self.pix_per_um / 2
-            nucb_qpoints_e = [Qt.QPoint(x, y) for x, y in n.buffer(dl2).exterior.coords]
-            nucb_qpoints_i = [Qt.QPoint(x, y) for x, y in n.buffer(-dl2).exterior.coords]
-
             nuc_pen = QPen(QBrush(QColor('white')), 1.1)
             nuc_pen.setStyle(QtCore.Qt.DotLine)
             painter.setPen(nuc_pen)
-            painter.drawPolygon(Qt.QPolygon(nucb_qpoints_i))
-            painter.drawPolygon(Qt.QPolygon(nucb_qpoints_e))
+            dl2 = self.line_length * self.pix_per_um / 2
+
+            try:
+                # get nuclei external and internal boundaries as a polygons
+                for d in [dl2, -dl2]:
+                    nucb_qpoints = [Qt.QPoint(x, y) for x, y in n.buffer(d).exterior.coords]
+                    painter.drawPolygon(Qt.QPolygon(nucb_qpoints))
+            except Exception as e:
+                logger.error(e)
 
             if self.selectedN is not None:
                 alpha = angle_delta * self.selectedN

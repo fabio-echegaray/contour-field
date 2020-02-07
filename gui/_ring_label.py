@@ -210,7 +210,7 @@ class RingImageQLabel(QtGui.QLabel):
         self.measurements = None
         if self._dnaimage is not None and self._boudaries is None:
             logger.debug("computing nuclei boundaries")
-            lbl, self._boudaries = m.nuclei_segmentation(self._dnaimage, simp_px=self.pix_per_um / 4)
+            lbl, self._boudaries = m.nuclei_segmentation(self._dnaimage, simp_px=self.pix_per_um / 2)
             self._boudaries = m.exclude_contained(self._boudaries)
 
             for n in self._boudaries:  # TODO: change selection feedback mechanism for something more elegant
@@ -221,12 +221,7 @@ class RingImageQLabel(QtGui.QLabel):
 
             for nucleus in self._boudaries:
                 if nucleus["boundary"].contains(pt):
-                    nucbnd = (nucleus["boundary"]
-                              .buffer(self.pix_per_um * self.pix_per_um, join_style=1)
-                              .simplify(self.pix_per_um / 10, preserve_topology=True)
-                              .buffer(-self.pix_per_um * self.pix_per_um, join_style=1)
-                              )
-
+                    nucbnd = nucleus["boundary"]
                     self._selNuc = nucbnd
                     self.currNucleus = nucbnd
                     self.emit(QtCore.SIGNAL('nucleusPicked()'))
@@ -237,7 +232,7 @@ class RingImageQLabel(QtGui.QLabel):
             self.measurements = list()
             for k, ((ls, l), colr) in enumerate(zip(lines, itertools.cycle(_colors))):
                 if ls is not None:
-                    self.measurements.append({'n': k, 'x': x, 'y': y, 'l': l, 'c': colr,
+                    self.measurements.append({'n': k, 'x': x, 'y': y, 'z': self.zstack, 'l': l, 'c': colr,
                                               'ls0': ls.coords[0], 'ls1': ls.coords[1],
                                               'd': max(l) - min(l), 'sum': np.sum(l)})
 

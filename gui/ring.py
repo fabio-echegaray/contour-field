@@ -237,8 +237,10 @@ class RingWindow(QMainWindow):
         self.stk.rngChannel = self.image.actChannel
         self.stk.selectedN = self.image.selectedLine['n'] if self.image.selectedLine is not None else 0
 
+        minx, miny, maxx, maxy = self.image.currNucleus.bounds
+        r = int(max(maxx - minx, maxy - miny) / 2)
         self.stk.loadImages(self.image.images, xy=[n[0] for n in self.image.currNucleus.centroid.xy],
-                            wh=(30 * self.image.pix_per_um, 30 * self.image.pix_per_um))
+                            wh=(r * self.image.pix_per_um, r * self.image.pix_per_um))
         self.stk.measure()
         self.stk.drawMeasurements()
 
