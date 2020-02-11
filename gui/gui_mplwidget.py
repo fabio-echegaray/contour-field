@@ -1,4 +1,4 @@
-from PyQt4.QtGui import QSizePolicy, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QWidget, QSizePolicy, QVBoxLayout
 from matplotlib.backends.backend_qt4agg import (FigureCanvasQTAgg as FigureCanvas)
 from matplotlib.figure import Figure
 

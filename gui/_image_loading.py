@@ -5,7 +5,7 @@ import xml.etree.ElementTree
 import numpy as np
 import skimage.external.tifffile as tf
 from czifile import CziFile
-from PyQt4 import QtGui
+from PyQt5 import QtGui
 
 logger = logging.getLogger(__name__)
 

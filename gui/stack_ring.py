@@ -6,10 +6,10 @@ from typing import List
 
 import numpy as np
 import seaborn as sns
-from PyQt4 import Qt, QtCore, QtGui
-from PyQt4.QtCore import QRect, QTimer
-from PyQt4.QtGui import QLabel, QWidget
-from PyQt4.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
+from PyQt5 import Qt, QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import QRect, QTimer
+from PyQt5.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
+from PyQt5.QtWidgets import QLabel, QWidget
 from shapely.geometry.point import Point
 
 from gui._widget_graph import GraphWidget
@@ -29,12 +29,12 @@ class StkRingWidget(QWidget):
         path = os.path.join(sys.path[0], __package__)
 
         # layout for images
-        self.vLayout = QtGui.QHBoxLayout()
+        self.vLayout = QtWidgets.QHBoxLayout()
         self.setLayout(self.vLayout)
 
         self.images = list()
         for i in range(stacks):
-            img = QtGui.QLabel()
+            img = QtWidgets.QLabel()
             img.width = 100
             img.height = 100
             self.images.append(img)

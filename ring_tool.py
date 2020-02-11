@@ -1,7 +1,6 @@
 import logging
 
-import plots as p
-from PyQt4 import QtGui
+from PyQt5 import QtWidgets
 
 from gui.ring import RingWindow
 
@@ -10,14 +9,14 @@ logger = logging.getLogger('ring').setLevel(logging.INFO)
 logging.getLogger('hhlab').setLevel(logging.INFO)
 logging.getLogger('gui').setLevel(logging.INFO)
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
-logging.getLogger('PyQt4').setLevel(logging.ERROR)
+logging.getLogger('PyQt5').setLevel(logging.ERROR)
 
 if __name__ == '__main__':
     import sys
     import os
 
-    from PyQt4.QtCore import QT_VERSION_STR
-    from PyQt4.Qt import PYQT_VERSION_STR
+    from PyQt5.QtCore import QT_VERSION_STR
+    from PyQt5.Qt import PYQT_VERSION_STR
 
     base_path = os.path.abspath('%s' % os.getcwd())
     logging.info('Qt version:' + QT_VERSION_STR)
@@ -26,7 +25,7 @@ if __name__ == '__main__':
     logging.info('Base dir:' + base_path)
     os.chdir(base_path)
 
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
 
     gui = RingWindow()
     gui.show()

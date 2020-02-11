@@ -4,8 +4,8 @@ import itertools
 
 import numpy as np
 import seaborn as sns
-from PyQt4 import Qt, QtCore, QtGui
-from PyQt4.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
+from PyQt5 import Qt, QtCore, QtGui, QtWidgets
+from PyQt5.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
 from shapely.geometry.point import Point
 from skimage import draw
 
@@ -26,7 +26,7 @@ def is_between(c, a, b):
     return math.isclose(dist, 0, abs_tol=1)
 
 
-class RingImageQLabel(QtGui.QLabel):
+class RingImageQLabel(QtWidgets.QLabel):
     clicked = Qt.pyqtSignal()
     lineUpdated = Qt.pyqtSignal()
     linePicked = Qt.pyqtSignal()
@@ -34,7 +34,7 @@ class RingImageQLabel(QtGui.QLabel):
     dl = 0.05
 
     def __init__(self, parent, file=None):
-        QtGui.QLabel.__init__(self, parent)
+        QtWidgets.QLabel.__init__(self, parent)
         self.selected = True
         self._file = file
         self.nucleiSelected = None
@@ -338,7 +338,7 @@ class RingImageQLabel(QtGui.QLabel):
                 self._drawMeasurements()
             self.setPixmap(self.imagePixmap)
 
-        return QtGui.QLabel.paintEvent(self, event)
+        return QtWidgets.QLabel.paintEvent(self, event)
 
     def _drawMeasurements(self):
         if self._selNuc is None: return

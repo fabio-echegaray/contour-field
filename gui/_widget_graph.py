@@ -2,8 +2,8 @@ import os
 import sys
 import logging
 
-from PyQt4 import Qt, QtCore, uic
-from PyQt4.QtGui import QWidget
+from PyQt5 import Qt, QtCore, uic
+from PyQt5.QtWidgets import QWidget
 import matplotlib.ticker as ticker
 from matplotlib.ticker import EngFormatter
 

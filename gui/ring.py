@@ -5,11 +5,12 @@ import logging
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from PyQt4 import QtCore, QtGui, uic
-from PyQt4.QtCore import QTimer
-from PyQt4.QtGui import QMainWindow, QWidget
 import matplotlib.ticker as ticker
 from matplotlib.ticker import EngFormatter
+
+from PyQt5 import QtCore, QtGui, QtWidgets, uic
+from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import QMainWindow, QWidget
 
 from gui._ring_label import RingImageQLabel, _nlin
 from gui._widget_graph import GraphWidget
@@ -25,7 +26,7 @@ pd.set_option('display.max_rows', 100)
 
 class RingWindow(QMainWindow):
     image: RingImageQLabel
-    statusbar: QtGui.QStatusBar
+    statusbar: QtWidgets.QStatusBar
 
     def __init__(self):
         super(RingWindow, self).__init__()
@@ -36,7 +37,6 @@ class RingWindow(QMainWindow):
 
         self.ctrl = QWidget()
         uic.loadUi(os.path.join(path, 'gui_ring_controls.ui'), self.ctrl)
-        self.ctrl.show()
 
         self.ctrl.zSpin.valueChanged.connect(self.onZValueChange)
         self.ctrl.openButton.pressed.connect(self.onOpenButton)
@@ -62,7 +62,6 @@ class RingWindow(QMainWindow):
         self.grphtimer.setSingleShot(True)
 
         self.stk = StkRingWidget(linePicked=self.onLinePickedFromStackGraph)
-        self.stk.show()
 
         self.grph.linePicked.connect(self.onLinePickedFromGraph)
         # self.stk.linePicked.connect(self.onLinePickedFromStackGraph)
@@ -86,6 +85,8 @@ class RingWindow(QMainWindow):
         self.df = pd.DataFrame()
         self.file = "/Users/Fabio/data/lab/airyscan/nil.czi"
 
+        self.stk.show()
+        self.ctrl.show()
         self.resizeEvent(None)
         self.moveEvent(None)
 
@@ -98,6 +99,7 @@ class RingWindow(QMainWindow):
         self.moveEvent(None)
 
     def moveEvent(self, QMoveEvent):
+        if hasattr(self, 'stk') or hasattr(self, 'ctrl'): return
         px = self.geometry().x()
         py = self.geometry().y()
         pw = self.geometry().width()
@@ -376,8 +378,8 @@ class RingWindow(QMainWindow):
 
 
 if __name__ == '__main__':
-    from PyQt4.QtCore import QT_VERSION_STR
-    from PyQt4.Qt import PYQT_VERSION_STR
+    from PyQt5.QtCore import QT_VERSION_STR
+    from PyQt5.Qt import PYQT_VERSION_STR
 
     base_path = os.path.abspath('%s' % os.getcwd())
     logging.getLogger('matplotlib').setLevel(logging.ERROR)
