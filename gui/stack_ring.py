@@ -90,7 +90,7 @@ class StkRingWidget(QWidget):
 
     def focusInEvent(self, QFocusEvent):
         logger.debug('focusInEvent')
-        self.activateWindow()
+        # self.activateWindow()
         self.grph.activateWindow()
 
     def showEvent(self, event):
