@@ -4,8 +4,9 @@ import itertools
 
 import numpy as np
 import seaborn as sns
-from PyQt5 import Qt, QtCore, QtGui, QtWidgets
+from PyQt5 import Qt, QtCore, QtGui
 from PyQt5.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
+from PyQt5.QtWidgets import QLabel
 from shapely.geometry.point import Point
 from skimage import draw
 
@@ -26,7 +27,7 @@ def is_between(c, a, b):
     return math.isclose(dist, 0, abs_tol=1)
 
 
-class RingImageQLabel(QtWidgets.QLabel):
+class RingImageQLabel(QLabel):
     clicked = Qt.pyqtSignal()
     lineUpdated = Qt.pyqtSignal()
     linePicked = Qt.pyqtSignal()
@@ -34,7 +35,7 @@ class RingImageQLabel(QtWidgets.QLabel):
     dl = 0.05
 
     def __init__(self, parent, file=None):
-        QtWidgets.QLabel.__init__(self, parent)
+        QLabel.__init__(self, parent)
         self.selected = True
         self._file = file
         self.nucleiSelected = None
@@ -192,8 +193,17 @@ class RingImageQLabel(QtWidgets.QLabel):
             self.images, self.pix_per_um, self.dt, self.nFrames, self.nChannels = find_image(file)
             self.um_per_pix = 1 / self.pix_per_um
             self.nZstack = int(len(self.images) / self.nFrames / self.nChannels)
+            logger.info("Pixels per um: %0.4f" % self.pix_per_um)
+
+            self._dnaimage = retrieve_image(self.images, channel=self._dnach, number_of_channels=self.nChannels,
+                                            zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
+            self._actimage = retrieve_image(self.images, channel=self._actch, number_of_channels=self.nChannels,
+                                            zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
+            self._dnapixmap = qpixmap_from(self._dnaimage)
+            self._actpixmap = qpixmap_from(self._actimage)
+            self.dwidth, self.dheight = self._dnaimage.shape
+
             self._repaint()
-            logger.info("pixels per um: %0.4f" % self.pix_per_um)
 
     def clear(self):
         imgarr = np.zeros(shape=(512, 512), dtype=np.uint32)
@@ -209,7 +219,7 @@ class RingImageQLabel(QtWidgets.QLabel):
     def _measure(self, x, y):
         self.measurements = None
         if self._dnaimage is not None and self._boudaries is None:
-            logger.debug("computing nuclei boundaries")
+            logger.debug("Computing nuclei boundaries")
             lbl, self._boudaries = m.nuclei_segmentation(self._dnaimage, simp_px=self.pix_per_um / 2)
             self._boudaries = m.exclude_contained(self._boudaries)
 
@@ -224,7 +234,7 @@ class RingImageQLabel(QtWidgets.QLabel):
                     nucbnd = nucleus["boundary"]
                     self._selNuc = nucbnd
                     self.currNucleus = nucbnd
-                    self.emit(QtCore.SIGNAL('nucleusPicked()'))
+                    self.nucleusPicked.emit()
 
             if self._selNuc is None: return
             lines = m.measure_lines_around_polygon(self._actimage, self._selNuc, rng_thick=4, dl=self.dl,
@@ -255,7 +265,7 @@ class RingImageQLabel(QtWidgets.QLabel):
                     if is_between(self.mousePos, pts[0], pts[1]):
                         if me != self.selectedLine:
                             self.selectedLine = me
-                            self.emit(QtCore.SIGNAL('lineUpdated()'))
+                            self.lineUpdated.emit()
                             self._repaint()
                             break
 
@@ -289,7 +299,7 @@ class RingImageQLabel(QtWidgets.QLabel):
         if anyLineSelected and not lineChanged and not self.measureLocked:
             self.clicked.emit()
             self.measureLocked = True
-            self.emit(QtCore.SIGNAL('linePicked()'))
+            self.linePicked.emit()
         else:
             self.measureLocked = False
             self.selectedLine = None
@@ -320,16 +330,16 @@ class RingImageQLabel(QtWidgets.QLabel):
         self.setPixmap(self.imagePixmap)
         return
 
-    def resizeEvent(self, QResizeEvent):
-        # this is a hack to resize everything when the user resizes the main window
-        if self.dwidth == 0: return
-        ratio = self.dheight / self.dwidth
-        self.setFixedWidth(self.width())
-        self.setFixedHeight(int(self.width()) * ratio)
+    # def resizeEvent(self, QResizeEvent):
+    #     # this is a hack to resize everything when the user resizes the main window
+    #     if self.dwidth == 0: return
+    #     ratio = self.dheight / self.dwidth
+    #     self.setFixedWidth(self.width())
+    #     self.setFixedHeight(int(self.width()) * ratio)
 
     # @profile
     def paintEvent(self, event):
-        if self.dataHasChanged:
+        if self.dataHasChanged and not (self._actpixmap is None and self._dnapixmap is None):
             self.dataHasChanged = False
             qpixmap = self._actpixmap if self.activeCh == "act" else self._dnapixmap
 
@@ -338,7 +348,7 @@ class RingImageQLabel(QtWidgets.QLabel):
                 self._drawMeasurements()
             self.setPixmap(self.imagePixmap)
 
-        return QtWidgets.QLabel.paintEvent(self, event)
+        return QLabel.paintEvent(self, event)
 
     def _drawMeasurements(self):
         if self._selNuc is None: return

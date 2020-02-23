@@ -178,7 +178,7 @@ class RingWindow(QMainWindow):
         flt = "zeiss(*.czi)"
         f = QFileDialog.getOpenFileName(qfd, "Open File", path, flt)
         if len(f) > 0:
-            self.image.file = f
+            self.image.file = f[0]
             self.image.zstack = self.ctrl.zSpin.value()
             self.image.dnaChannel = self.ctrl.dnaSpin.value()
             self.ctrl.nchLbl.setText("%d channels" % self.image.nChannels)

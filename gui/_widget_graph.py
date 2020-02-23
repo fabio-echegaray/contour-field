@@ -46,7 +46,7 @@ class GraphWidget(QWidget):
         event.artist.set_linewidth(0.5)
         # logger.debug([l.get_label() for l in self.ax.lines])
         self.selectedLine = int(event.artist.get_label())
-        self.emit(QtCore.SIGNAL('linePicked()'))
+        self.linePicked.emit()
         self.canvas.draw()
 
     def format_ax(self):
