@@ -5,11 +5,13 @@ import logging
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from PyQt4 import QtCore, QtGui, uic
-from PyQt4.QtCore import QTimer
-from PyQt4.QtGui import QMainWindow, QWidget
 import matplotlib.ticker as ticker
 from matplotlib.ticker import EngFormatter
+
+from PyQt5 import QtCore, QtGui, uic
+from PyQt5.QtCore import QTimer, QPoint
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QPushButton,
+                             QHBoxLayout, QVBoxLayout, QStatusBar, QFileDialog)
 
 from gui._ring_label import RingImageQLabel, _nlin
 from gui._widget_graph import GraphWidget
@@ -25,18 +27,16 @@ pd.set_option('display.max_rows', 100)
 
 class RingWindow(QMainWindow):
     image: RingImageQLabel
-    statusbar: QtGui.QStatusBar
+    statusbar: QStatusBar
 
     def __init__(self):
         super(RingWindow, self).__init__()
         path = os.path.join(sys.path[0], __package__)
 
         uic.loadUi(os.path.join(path, 'gui_ring.ui'), self)
-        self.move(50, 0)
 
         self.ctrl = QWidget()
         uic.loadUi(os.path.join(path, 'gui_ring_controls.ui'), self.ctrl)
-        self.ctrl.show()
 
         self.ctrl.zSpin.valueChanged.connect(self.onZValueChange)
         self.ctrl.openButton.pressed.connect(self.onOpenButton)
@@ -62,15 +62,10 @@ class RingWindow(QMainWindow):
         self.grphtimer.setSingleShot(True)
 
         self.stk = StkRingWidget(linePicked=self.onLinePickedFromStackGraph)
-        self.stk.show()
 
         self.grph.linePicked.connect(self.onLinePickedFromGraph)
         # self.stk.linePicked.connect(self.onLinePickedFromStackGraph)
         self.grphtimer.timeout.connect(self._graph)
-
-        self.ctrl.setWindowFlags(self.ctrl.windowFlags() & ~QtCore.Qt.WindowStaysOnTopHint)
-        self.grph.setWindowFlags(self.grph.windowFlags() & ~QtCore.Qt.WindowStaysOnTopHint)
-        self.stk.setWindowFlags(self.stk.windowFlags() & ~QtCore.Qt.WindowStaysOnTopHint)
 
         self.image.dnaChannel = self.ctrl.dnaSpin.value()
         self.image.actChannel = self.ctrl.actSpin.value()
@@ -86,6 +81,10 @@ class RingWindow(QMainWindow):
         self.df = pd.DataFrame()
         self.file = "/Users/Fabio/data/lab/airyscan/nil.czi"
 
+        self.show()
+        self.stk.show()
+        self.ctrl.show()
+        self.move(0, 0)
         self.resizeEvent(None)
         self.moveEvent(None)
 
@@ -98,24 +97,9 @@ class RingWindow(QMainWindow):
         self.moveEvent(None)
 
     def moveEvent(self, QMoveEvent):
-        px = self.geometry().x()
-        py = self.geometry().y()
-        pw = self.geometry().width()
-        ph = self.geometry().height()
-
-        dw = self.ctrl.width()
-        dh = self.ctrl.height()
-        self.ctrl.setGeometry(px + pw, py, dw, dh)
-
-        sw = self.stk.width()
-        sh = self.stk.height()
-        self.stk.setGeometry(px + pw + dw, py, sw, sh)
-        self.stk.moveEvent(None)
-
-        dw = self.grph.width()
-        dh = self.grph.height()
-        self.grph.setGeometry(px, py + ph + 20, dw, dh)
-        # super(RingWindow, self).mouseMoveEvent(event)
+        self.ctrl.move(self.frameGeometry().topRight())
+        self.grph.move(self.geometry().bottomLeft())
+        self.stk.move(self.ctrl.frameGeometry().topRight())
 
     def closeEvent(self, event):
         self._saveCurrentFileMeasurements()
@@ -161,7 +145,7 @@ class RingWindow(QMainWindow):
                 x = np.arange(start=0, stop=len(me['l']) * self.image.dl, step=self.image.dl)
                 lw = 0.1 if self.image.selectedLine is not None and me != self.image.selectedLine else 0.5
                 self.grph.ax.plot(x, me['l'], linewidth=lw, linestyle='-', color=me['c'], alpha=alpha, zorder=10,
-                                  picker=5, label=me['n'])
+                                  picker=5, label=me['n'])  # , marker='o', markersize=1)
             self.grph.format_ax()
             self.statusbar.showMessage("ptp: %s" % ["%d " % me['d'] for me in self.image.measurements])
             self.grph.canvas.draw()
@@ -187,14 +171,14 @@ class RingWindow(QMainWindow):
         # save current file measurements as a backup
         self._saveCurrentFileMeasurements()
 
-        qfd = QtGui.QFileDialog()
+        qfd = QFileDialog()
         path = os.path.dirname(self.file)
         if self.image.file is not None:
             self.statusbar.showMessage("current file: %s" % os.path.basename(self.image.file))
         flt = "zeiss(*.czi)"
-        f = QtGui.QFileDialog.getOpenFileName(qfd, "Open File", path, flt)
+        f = QFileDialog.getOpenFileName(qfd, "Open File", path, flt)
         if len(f) > 0:
-            self.image.file = f
+            self.image.file = f[0]
             self.image.zstack = self.ctrl.zSpin.value()
             self.image.dnaChannel = self.ctrl.dnaSpin.value()
             self.ctrl.nchLbl.setText("%d channels" % self.image.nChannels)
@@ -376,8 +360,8 @@ class RingWindow(QMainWindow):
 
 
 if __name__ == '__main__':
-    from PyQt4.QtCore import QT_VERSION_STR
-    from PyQt4.Qt import PYQT_VERSION_STR
+    from PyQt5.QtCore import QT_VERSION_STR
+    from PyQt5.Qt import PYQT_VERSION_STR
 
     base_path = os.path.abspath('%s' % os.getcwd())
     logging.getLogger('matplotlib').setLevel(logging.ERROR)

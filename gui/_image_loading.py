@@ -5,7 +5,7 @@ import xml.etree.ElementTree
 import numpy as np
 import skimage.external.tifffile as tf
 from czifile import CziFile
-from PyQt4 import QtGui
+from PyQt5.QtGui import QImage, QPixmap
 
 logger = logging.getLogger(__name__)
 
@@ -107,5 +107,6 @@ def qpixmap_from(image: np.array):
 
     # map the data range to 0 - 255
     img_8bit = ((image - image.min()) / (image.ptp() / 255.0)).astype(np.uint8)
-    qimg = QtGui.QImage(img_8bit.repeat(4), dwidth, dheight, QtGui.QImage.Format_RGB32)
-    return QtGui.QPixmap(qimg)
+    # qimg = QImage(img_8bit.repeat(4), dwidth, dheight, QImage.Format_RGB32)
+    qimg = QImage(img_8bit.repeat(3), dwidth, dheight, QImage.Format_RGB888)
+    return QPixmap(qimg)

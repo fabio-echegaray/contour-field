@@ -6,14 +6,14 @@ from typing import List
 
 import numpy as np
 import seaborn as sns
-from PyQt4 import Qt, QtCore, QtGui
-from PyQt4.QtCore import QRect, QTimer
-from PyQt4.QtGui import QLabel, QWidget
-from PyQt4.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
+from PyQt5 import Qt, QtCore, QtWidgets
+from PyQt5.QtCore import QRect, QTimer
+from PyQt5.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
+from PyQt5.QtWidgets import QLabel, QWidget
 from shapely.geometry.point import Point
 
 from gui._widget_graph import GraphWidget
-from gui._image_loading import retrieve_image
+from gui._image_loading import qpixmap_from, retrieve_image
 import measurements as m
 
 logger = logging.getLogger('ring.stk.gui')
@@ -29,12 +29,12 @@ class StkRingWidget(QWidget):
         path = os.path.join(sys.path[0], __package__)
 
         # layout for images
-        self.vLayout = QtGui.QHBoxLayout()
+        self.vLayout = QtWidgets.QHBoxLayout()
         self.setLayout(self.vLayout)
 
         self.images = list()
         for i in range(stacks):
-            img = QtGui.QLabel()
+            img = QtWidgets.QLabel()
             img.width = 100
             img.height = 100
             self.images.append(img)
@@ -90,7 +90,7 @@ class StkRingWidget(QWidget):
 
     def focusInEvent(self, QFocusEvent):
         logger.debug('focusInEvent')
-        self.activateWindow()
+        # self.activateWindow()
         self.grph.activateWindow()
 
     def showEvent(self, event):
@@ -103,11 +103,11 @@ class StkRingWidget(QWidget):
                 self.selectedZ = k
                 self.linePicked.emit()
 
-        self._repainImages()
+        self._repaintImages()
         self._graph()
         self.drawMeasurements()
 
-    def _repainImages(self):
+    def _repaintImages(self):
         for i in range(len(self._pixmaps)):
             self.images[i].setPixmap(self._pixmaps[i])
             # self.images[i].setPixmap(
@@ -115,7 +115,7 @@ class StkRingWidget(QWidget):
 
     def loadImages(self, images, xy=(0, 0), wh=(1, 1)):
         assert (self.dnaChannel is not None and self.rngChannel is not None and
-                self.nChannels is not None), "some parameters were not correctly set."
+                self.nChannels is not None), "Some parameters were not correctly set."
         # assert (len(boundaries) == self.zstacks and len(
         #     lines) == self.zstacks), "boundaries and lines should be the same length as zstacks in the image."
 
@@ -124,7 +124,7 @@ class StkRingWidget(QWidget):
         y1, y2 = int(xy[1] - wh[1] / 2), int(xy[1] + wh[1] / 2)
         self._images = images[:, y1:y2, x1:x2]
         if self._images.size == 0:
-            logger.warning(f"empty cropped image! x1,x2,y1,y2 ({x1},{x2},{y1},{y2})")
+            logger.warning(f"Empty cropped image! x1,x2,y1,y2 ({x1},{x2},{y1},{y2})")
 
         self._pixmaps = list()
 
@@ -133,15 +133,12 @@ class StkRingWidget(QWidget):
                                   zstack=i, number_of_zstacks=self.zstacks, frame=0)
             self.dwidth, self.dheight = data.shape
 
-            # map the data range to 0 - 255
-            img_8bit = ((data - data.min()) / (data.ptp() / 255.0)).astype(np.uint8)
-            qtimage = QtGui.QImage(img_8bit.repeat(4), self.dwidth, self.dheight, QtGui.QImage.Format_RGB32)
-            imagePixmap = QPixmap(qtimage)
+            imagePixmap = qpixmap_from(data)
             rect = QRect(x1, y1, wh[0], wh[1])
             cropped = imagePixmap.copy(rect)
             self._pixmaps.append(cropped)
 
-        self._repainImages()
+        self._repaintImages()
         self.update()
         return
 
@@ -185,7 +182,7 @@ class StkRingWidget(QWidget):
     def drawMeasurements(self, erase_bkg=False):
         if not self.render or not self._nucboundaries: return
         if erase_bkg:
-            self._repainImages()
+            self._repaintImages()
         angle_delta = 2 * np.pi / self.nlines
         nim, width, height = self._images.shape
 
@@ -259,7 +256,7 @@ class StkRingWidget(QWidget):
         self.selectedZ = self.grph.selectedLine if self.grph.selectedLine is not None else None
         if self.selectedZ is not None:
             logger.debug(f"Z {self.selectedZ} selected")
-            self._repainImages()
+            self._repaintImages()
             self.drawMeasurements()
 
             # self.emit(QtCore.SIGNAL('linePicked()'))
@@ -273,5 +270,5 @@ class StkRingWidget(QWidget):
     def render(self, value):
         if value is not None:
             self._render = value
-            self._repainImages()
+            self._repaintImages()
             self.drawMeasurements()
