@@ -15,7 +15,7 @@ import skimage.measure as measure
 import skimage.morphology as morphology
 import skimage.segmentation as segmentation
 import skimage.transform as tf
-from shapely.geometry import Polygon, LineString, MultiPoint
+from shapely.geometry import LineString, MultiPoint, Polygon
 from scipy.ndimage.morphology import distance_transform_edt
 from shapely.geometry.point import Point
 from shapely import affinity
@@ -185,7 +185,7 @@ def nuclei_segmentation(image, compute_distance=False, radius=10, simp_px=None):
         pol = Polygon(contr)
         if simp_px is not None:
             pol = (pol.buffer(simp_px, join_style=1)
-                   .simplify(simp_px / 10, preserve_topology=True)
+                   # .simplify(simp_px / 10, preserve_topology=True)
                    .buffer(-simp_px, join_style=1)
                    )
 

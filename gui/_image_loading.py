@@ -47,7 +47,7 @@ def load_zeiss(path):
         # next line is somewhat cryptic, but just extracts um/pix (calibration) of X and Y into res
         res = [float(i[0].text) for i in meta.findall('.//Scaling/Items/*') if
                i.attrib['Id'] == 'X' or i.attrib['Id'] == 'Y']
-        assert np.isclose(res[0], res[1]), "pixels are not square"
+        assert np.isclose(res[0], res[1]), "Pixels are not square."
 
         # get first calibration value and convert it from meters to um
         res = res[0] * 1e6
@@ -68,7 +68,7 @@ def load_zeiss(path):
             images.append(sb.data_segment().data().reshape((n_x, n_y)))
 
         logger.info(
-            f"loaded {czi._fh.name}. WxH({n_x},{n_y}), channels: {n_channels}, frames: {n_frames}, stacks: {n_zstacks}")
+            f"Loaded {czi._fh.name}. WxH({n_x},{n_y}), channels: {n_channels}, frames: {n_frames}, stacks: {n_zstacks}")
         return np.array(images), 1 / res, dt, n_frames, n_channels  # , n_zstacks
 
 
@@ -89,7 +89,7 @@ def find_image(img_name, folder=None):
 def retrieve_image(image_arr, frame=0, zstack=0, channel=0, number_of_channels=1, number_of_zstacks=1):
     if image_arr is not None:
         ix = frame * (number_of_channels * number_of_zstacks) + zstack * number_of_channels + channel
-        logger.debug("retrieving frame %d of channel %d at s-stack=%d (index=%d)" % (frame, channel, zstack, ix))
+        logger.debug("Retrieving frame %d of channel %d at z-stack=%d (index=%d)" % (frame, channel, zstack, ix))
         return image_arr[ix]
 
 
@@ -98,7 +98,7 @@ def image_iterator(image_arr, channel=0, number_of_frames=1):
     n_channels = int(nimgs / number_of_frames)
     for f in range(number_of_frames):
         ix = f * n_channels + channel
-        logger.debug("retrieving frame %d of channel %d (index=%d)" % (f, channel, ix))
+        logger.debug("Retrieving frame %d of channel %d (index=%d)" % (f, channel, ix))
         if ix < nimgs: yield image_arr[ix]
 
 

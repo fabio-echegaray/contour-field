@@ -62,7 +62,7 @@
     </rect>
    </property>
    <property name="text">
-    <string>actin dna_channel</string>
+    <string>actin channel</string>
    </property>
   </widget>
   <widget class="QLabel" name="label">

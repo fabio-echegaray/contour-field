@@ -1,21 +1,17 @@
 import math
 import logging
-import itertools
 
 import numpy as np
-import seaborn as sns
 from PyQt5 import Qt, QtCore, QtGui
 from PyQt5.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
 from PyQt5.QtWidgets import QLabel
-from shapely.geometry.point import Point
+import shapely.wkt
 from skimage import draw
 
-from gui._image_loading import find_image, retrieve_image, qpixmap_from
-import measurements as m
+from gui._image_loading import retrieve_image
+from gui.measure import Measure
 
 logger = logging.getLogger('gui.ring.label')
-_nlin = 20
-_colors = sns.husl_palette(_nlin, h=.5).as_hex()
 
 
 def distance(a, b):
@@ -27,54 +23,38 @@ def is_between(c, a, b):
     return math.isclose(dist, 0, abs_tol=1)
 
 
-class RingImageQLabel(QLabel):
+# noinspection PyPep8Naming
+class RingImageQLabel(QLabel, Measure):
     clicked = Qt.pyqtSignal()
     lineUpdated = Qt.pyqtSignal()
     linePicked = Qt.pyqtSignal()
     nucleusPicked = Qt.pyqtSignal()
-    dl = 0.05
 
-    def __init__(self, parent, file=None):
-        QLabel.__init__(self, parent)
+    def __init__(self, parent):
+        super(QLabel, self).__init__(parent=parent)
+        super(Measure, self).__init__()
         self.selected = True
-        self._file = file
-        self.nucleiSelected = None
         self.dataHasChanged = False
         self.resolution = None
         self.imagePixmap = None
-        self.dwidth = 0
-        self.dheight = 0
         self.nd = None
 
-        self.images = None
-        self.pix_per_um = None
-        self.um_per_pix = None
-        self.dt = None
-        self.nFrames = None
-        self.nChannels = None
-        self.nZstack = None
-        self._zstack = 0
-
-        self._dnach = 0
-        self._actch = 0
         self._activeCh = "dna"
-
-        self._dnaimage = None
-        self._actimage = None
-        self._dnapixmap = None
-        self._actpixmap = None
-        self._boudaries = None
 
         self._render = True
         self._selNuc = None
-        self.currNucleus = None
-        self.measurements = None
+        self.currNucleusId = None
         self.mousePos = Qt.QPoint(0, 0)
         self._selectedLine = None
         self.measureLocked = False
 
         self.setMouseTracking(True)
         self.clear()
+
+    @property
+    def currNucleus(self):
+        # print(self.nucleus(self.currNucleusId))
+        return shapely.wkt.loads(self.nucleus(self.currNucleusId)["value"].iloc[0])
 
     @property
     def activeCh(self):
@@ -88,121 +68,53 @@ class RingImageQLabel(QLabel):
 
     @property
     def selectedLine(self):
-        # return self._selectedLine['n'] if self._selectedLine is not None else None
-        return self._selectedLine
+        return self._selectedLine['li'].iloc[0] if self._selectedLine is not None else None
 
     @selectedLine.setter
     def selectedLine(self, value):
         if type(value) == dict:
             self._selectedLine = value
-        elif type(value) == int:
-            self._selectedLine = None
-            for me in self.measurements:
-                if me['n'] == value:
-                    self._selectedLine = me
-                    self._repaint()
+        elif np.isscalar(value):
+            nuclines = self.lines(self.currNucleusId)
+            self._selectedLine = nuclines[nuclines["li"] == value]
+            self._repaint()
         else:
             self._selectedLine = None
 
     @property
-    def render(self):
+    def renderMeasurements(self):
         return self._render
 
-    @render.setter
-    def render(self, value):
+    @renderMeasurements.setter
+    def renderMeasurements(self, value):
         if value is not None:
             self._render = value
             self._repaint()
             self.setMouseTracking(self._render)
 
-    @property
-    def zstack(self):
-        return self._zstack
-
-    @zstack.setter
+    @Measure.zstack.setter
     def zstack(self, value):
-        if value is not None:
-            self._zstack = int(value)
-            self._boudaries = None
-            if self.images is not None:
-                self._dnaimage = retrieve_image(self.images, channel=self._dnach, number_of_channels=self.nChannels,
-                                                zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
-                self._actimage = retrieve_image(self.images, channel=self._actch, number_of_channels=self.nChannels,
-                                                zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
-                self._dnapixmap = qpixmap_from(self._dnaimage)
-                self._actpixmap = qpixmap_from(self._actimage)
+        super(RingImageQLabel, type(self)).zstack.fset(self, value)
+        self._repaint()
 
-                self.dwidth, self.dheight = self._dnaimage.shape
+    @Measure.dnaChannel.setter
+    def dnaChannel(self, value):
+        super(RingImageQLabel, type(self)).dnaChannel.fset(self, value)
+        if self._selNuc is not None:
+            if self.activeCh == "dna":
+                self._repaint()
 
-            if self._selNuc is not None:
-                p = self._selNuc.centroid
-                self._measure(p.x, p.y)
+    @Measure.rngChannel.setter
+    def rngChannel(self, value):
+        super(RingImageQLabel, type(self)).rngChannel.fset(self, value)
+        if self.activeCh == "act":
             self._repaint()
 
-    @property
-    def dnaChannel(self):
-        return self._dnach
-
-    @dnaChannel.setter
-    def dnaChannel(self, value):
-        if value is not None:
-            self._dnach = int(value)
-
-            if self.file is not None:
-                self._dnaimage = retrieve_image(self.images, channel=self._dnach, number_of_channels=self.nChannels,
-                                                zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
-                self._dnapixmap = qpixmap_from(self._dnaimage)
-
-                self.dwidth, self.dheight = self._dnaimage.shape
-
-                self._boudaries = None
-                if self._selNuc is not None:
-                    p = self._selNuc.centroid
-                    self._measure(p.x, p.y)
-                    if self.activeCh == "dna":
-                        self._repaint()
-
-    @property
-    def actChannel(self):
-        return self._actch
-
-    @actChannel.setter
-    def actChannel(self, value):
-        if value is not None:
-            self._actch = int(value)
-
-            if self.file is not None:
-                self._actimage = retrieve_image(self.images, channel=self._actch, number_of_channels=self.nChannels,
-                                                zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
-                self._actpixmap = qpixmap_from(self._actimage)
-
-                self.dwidth, self.dheight = self._actimage.shape
-
-                if self.activeCh == "act":
-                    self._repaint()
-
-    @property
-    def file(self):
-        return self._file
-
-    @file.setter
+    @Measure.file.setter
     def file(self, file):
         if file is not None:
             logger.info('Loading %s' % file)
-            self._file = file
-            self.images, self.pix_per_um, self.dt, self.nFrames, self.nChannels = find_image(file)
-            self.um_per_pix = 1 / self.pix_per_um
-            self.nZstack = int(len(self.images) / self.nFrames / self.nChannels)
-            logger.info("Pixels per um: %0.4f" % self.pix_per_um)
-
-            self._dnaimage = retrieve_image(self.images, channel=self._dnach, number_of_channels=self.nChannels,
-                                            zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
-            self._actimage = retrieve_image(self.images, channel=self._actch, number_of_channels=self.nChannels,
-                                            zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
-            self._dnapixmap = qpixmap_from(self._dnaimage)
-            self._actpixmap = qpixmap_from(self._actimage)
-            self.dwidth, self.dheight = self._dnaimage.shape
-
+            super(RingImageQLabel, type(self)).file.fset(self, file)
             self._repaint()
 
     def clear(self):
@@ -216,85 +128,68 @@ class RingImageQLabel(QLabel):
         self.dataHasChanged = True
         self.update()
 
-    def _measure(self, x, y):
-        self.measurements = None
-        if self._dnaimage is not None and self._boudaries is None:
-            logger.debug("Computing nuclei boundaries")
-            lbl, self._boudaries = m.nuclei_segmentation(self._dnaimage, simp_px=self.pix_per_um / 2)
-            self._boudaries = m.exclude_contained(self._boudaries)
-
-            for n in self._boudaries:  # TODO: change selection feedback mechanism for something more elegant
-                n["selected"] = False
-
-        if self._boudaries is not None:
-            pt = Point(x, y)
-
-            for nucleus in self._boudaries:
-                if nucleus["boundary"].contains(pt):
-                    nucbnd = nucleus["boundary"]
-                    self._selNuc = nucbnd
-                    self.currNucleus = nucbnd
-                    self.nucleusPicked.emit()
-
-            if self._selNuc is None: return
-            lines = m.measure_lines_around_polygon(self._actimage, self._selNuc, rng_thick=4, dl=self.dl,
-                                                   n_lines=_nlin, pix_per_um=self.pix_per_um)
-            self.measurements = list()
-            for k, ((ls, l), colr) in enumerate(zip(lines, itertools.cycle(_colors))):
-                if ls is not None:
-                    self.measurements.append({'n': k, 'x': x, 'y': y, 'z': self.zstack, 'l': l, 'c': colr,
-                                              'ls0': ls.coords[0], 'ls1': ls.coords[1],
-                                              'd': max(l) - min(l), 'sum': np.sum(l)})
-
     def mouseMoveEvent(self, event):
         # logger.debug('mouseMoveEvent')
-        if not self.measureLocked and event.type() == QtCore.QEvent.MouseMove and self.measurements is not None:
+        if self.file is None:
+            return
+
+        if not self.measureLocked and event.type() == QtCore.QEvent.MouseMove and not self.lines().empty:
             if event.buttons() == QtCore.Qt.NoButton:
                 pos = event.pos()
                 # convert to image pixel coords
-                x = pos.x() * self.dwidth / self.width()
-                y = pos.y() * self.dheight / self.height()
+                x = int(pos.x() * self.dwidth / self.width())
+                y = int(pos.y() * self.dheight / self.height())
                 self.mousePos = Qt.QPoint(x, y)
 
                 # print("------------------------------------------------------")
-                for me in self.measurements:
+                for ix, me in self.lines(self.currNucleusId).iterrows():
                     pts = [Qt.QPoint(x, y) for x, y in [me['ls0'], me['ls1']]]
                     # print("X %d %d %d | Y %d %d %d" % (
-                    #     min(pts[0].x(), pts[1].x()), self.mouse_pos.x(), max(pts[0].x(), pts[1].x()),
-                    #     min(pts[0].y(), pts[1].y()), self.mouse_pos.y(), max(pts[0].y(), pts[1].y())))
+                    #     min(pts[0].x(), pts[1].x()), self.mousePos.x(), max(pts[0].x(), pts[1].x()),
+                    #     min(pts[0].y(), pts[1].y()), self.mousePos.y(), max(pts[0].y(), pts[1].y())))
                     if is_between(self.mousePos, pts[0], pts[1]):
-                        if me != self.selectedLine:
-                            self.selectedLine = me
+                        if me['li'] != self.selectedLine:
+                            logger.debug(f"Mouse over line {me['li']}.")
+                            self.selectedLine = me['li']
                             self.lineUpdated.emit()
                             self._repaint()
                             break
 
     def mouseReleaseEvent(self, ev):
+        if self.file is None:
+            return
+
         pos = ev.pos()
         # convert to image pixel coords
-        x = pos.x() * self.dwidth / self.width()
-        y = pos.y() * self.dheight / self.height()
-        logger.debug('clicked! X%d Y%d' % (x, y))
+        x = int(pos.x() * self.dwidth / self.width())
+        y = int(pos.y() * self.dheight / self.height())
+        logger.debug(f'Clicked on (x,y)=({x},{y})')
 
         anyLineSelected = False
         lineChanged = False
-        if self.measurements is not None:
-            for me in self.measurements:
+        if not self.lines().empty:
+            for ix, me in self.lines().iterrows():
                 pts = [Qt.QPoint(x, y) for x, y in [me['ls0'], me['ls1']]]
                 if is_between(self.mousePos, pts[0], pts[1]):
                     anyLineSelected = True
-                    if me != self.selectedLine:
+                    if me['li'] != self.selectedLine:
                         lineChanged = True
+                        self.selectedLine = me['li']
+                        logger.debug(f"Mouse click over line {me['li']}.")
                         break
 
         # check if pointer clicked inside any nuclei
-        # TODO: change selection feedback mechanism for something more elegant
-        if self._boudaries is not None:
-            pt = Point(x, y)
-            for nucleus in self._boudaries:
-                if nucleus["boundary"].contains(pt):
-                    logger.debug(f"nucleus {nucleus['id']} selected by clicking.")
-                    nucleus["selected"] = True
+        nucleus = self.nucleus(x, y)
+        if nucleus.empty:
+            return
+
+        if len(nucleus) == 1:
+            logger.debug(f"Nucleus {nucleus['id'].iloc[0]} selected by clicking.")
+            self.lines(nucleus['id'].iloc[0])
+            nucbnd = shapely.wkt.loads(nucleus["value"].iloc[0])
+            self._selNuc = nucbnd
+            self.currNucleusId = int(nucleus["id"].iloc[0])
+            self.nucleusPicked.emit()
 
         if anyLineSelected and not lineChanged and not self.measureLocked:
             self.clicked.emit()
@@ -302,18 +197,12 @@ class RingImageQLabel(QLabel):
             self.linePicked.emit()
         else:
             self.measureLocked = False
-            self.selectedLine = None
-            self._selNuc = None
-            self._measure(x, y)
             self._repaint()
             self.clicked.emit()
 
     def paint_measures(self):
-        logger.debug("painting measurement")
-        data = retrieve_image(self.images, channel=self._actch, number_of_channels=self.nChannels,
-                              zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
-        self.dwidth, self.dheight = data.shape
-        # print(data.shape, self.dwidth, self.dheight)
+        logger.debug("Painting measurements.")
+        data = self.rngimage
 
         # map the data range to 0 - 255
         img8bit = ((data - data.min()) / (data.ptp() / 255.0)).astype(np.uint8)
@@ -330,28 +219,22 @@ class RingImageQLabel(QLabel):
         self.setPixmap(self.imagePixmap)
         return
 
-    # def resizeEvent(self, QResizeEvent):
-    #     # this is a hack to resize everything when the user resizes the main window
-    #     if self.dwidth == 0: return
-    #     ratio = self.dheight / self.dwidth
-    #     self.setFixedWidth(self.width())
-    #     self.setFixedHeight(int(self.width()) * ratio)
-
     # @profile
     def paintEvent(self, event):
-        if self.dataHasChanged and not (self._actpixmap is None and self._dnapixmap is None):
+        if self.dataHasChanged and not (self.rngpixmap is None and self.dnapixmap is None):
             self.dataHasChanged = False
-            qpixmap = self._actpixmap if self.activeCh == "act" else self._dnapixmap
+            qpixmap = self.rngpixmap if self.activeCh == "act" else self.dnapixmap
 
             self.imagePixmap = qpixmap.copy()
-            if self.render:
+            if self.renderMeasurements:
                 self._drawMeasurements()
             self.setPixmap(self.imagePixmap)
 
         return QLabel.paintEvent(self, event)
 
     def _drawMeasurements(self):
-        if self._selNuc is None: return
+        if self._selNuc is None:
+            return
 
         painter = QPainter()
         painter.begin(self.imagePixmap)
@@ -381,9 +264,9 @@ class RingImageQLabel(QLabel):
             nuc_pen = QPen(QBrush(QColor('red')), self.dwidth / 256)
             nuc_pen.setStyle(QtCore.Qt.DotLine)
             painter.setPen(nuc_pen)
-            for e in self._boudaries:
-                n = e["boundary"]
-                if e["selected"]:  # TODO: change selection feedback mechanism for something more elegant
+            for i, e in self.nuclei.iterrows():
+                n = shapely.wkt.loads(e["value"])
+                if e["id"] == self.currNucleusId:
                     brush = QBrush(QtCore.Qt.BDiagPattern)
                     brush.setColor(QColor('yellow'))
                     painter.setBrush(brush)
@@ -393,9 +276,12 @@ class RingImageQLabel(QLabel):
                 painter.drawPolygon(Qt.QPolygon(nucb_qpoints))
                 painter.setBrush(QBrush(QtCore.Qt.NoBrush))
 
-        for me in self.measurements:
-            painter.setPen(
-                QPen(QBrush(QColor(me['c'])), 2 * self.pix_per_um if me == self.selectedLine else self.pix_per_um))
+        for ix, me in self.lines(self.currNucleusId).iterrows():
+            thickness = self.pix_per_um
+            thickness *= (2 if (self.selectedLine is not None and
+                                self.selectedLine == me['li'])
+                          else 1)
+            painter.setPen(QPen(QBrush(QColor(me['c'])), thickness))
             pts = [Qt.QPoint(x, y) for x, y in [me['ls0'], me['ls1']]]
             painter.drawLine(pts[0], pts[1])
 
@@ -407,7 +293,7 @@ class RingImageQLabel(QLabel):
         from shapely import affinity
         import plots as p
 
-        act_img = retrieve_image(self.images, channel=self.actChannel, number_of_channels=self.nChannels,
+        act_img = retrieve_image(self.images, channel=self.rngChannel, number_of_channels=self.nChannels,
                                  zstack=self.zstack, number_of_zstacks=self.nZstack, frame=0)
 
         ext = [0, self.dwidth / self.pix_per_um, self.dheight / self.pix_per_um, 0]
