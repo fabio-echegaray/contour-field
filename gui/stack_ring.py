@@ -1,55 +1,51 @@
-import os
-import sys
 import logging
-import itertools
 from typing import List
 
 import numpy as np
 import seaborn as sns
 from PyQt5 import Qt, QtCore, QtWidgets
 from PyQt5.QtCore import QRect, QTimer
-from PyQt5.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
+from PyQt5.QtGui import QBrush, QColor, QPainter, QPen
 from PyQt5.QtWidgets import QLabel, QWidget
-from shapely.geometry.point import Point
+from shapely import affinity
+import shapely.wkt
 
 from gui._widget_graph import GraphWidget
-from gui._image_loading import qpixmap_from, retrieve_image
+from gui.measure import Measure
 import measurements as m
 
 logger = logging.getLogger('ring.stk.gui')
 
 
+# noinspection PyPep8Naming
 class StkRingWidget(QWidget):
     images: List[QLabel]
     linePicked = Qt.pyqtSignal()
 
-    def __init__(self, parent=None, stacks=5, n_channels=None, dna_ch=None, rng_ch=None, pix_per_um=None,
+    def __init__(self, measure: Measure, parent=None,
                  line_length=4, dl=0.05, lines_to_measure=1, **kwargs):
         super().__init__(parent, **kwargs)
-        path = os.path.join(sys.path[0], __package__)
+        # path = os.path.join(sys.path[0], __package__)
 
         # layout for images
         self.vLayout = QtWidgets.QHBoxLayout()
         self.setLayout(self.vLayout)
 
         self.images = list()
-        for i in range(stacks):
+        for i in range(measure.nZstack):
             img = QtWidgets.QLabel()
             img.width = 100
             img.height = 100
             self.images.append(img)
             self.vLayout.addWidget(img)
 
-        self.dnaChannel = dna_ch
-        self.rngChannel = rng_ch
-        self.nChannels = n_channels
-        self.zstacks = stacks
+        self.xy = (0, 0)
+        self.wh = (0, 0)
         self.nlines = lines_to_measure
         self.dl = dl
         self.line_length = line_length
-        self.pix_per_um = pix_per_um
 
-        self.measurements = None
+        self._meas = measure
         self.selectedN = None
         self.selectedZ = None
         self._render = True
@@ -81,7 +77,7 @@ class StkRingWidget(QWidget):
         pw = self.geometry().width()
         ph = self.geometry().height()
 
-        dw = self.grph.width()
+        # dw = self.grph.width()
         dh = self.grph.height()
         self.grph.setGeometry(px, py + ph + 20, pw, dh)
 
@@ -114,12 +110,15 @@ class StkRingWidget(QWidget):
             #     self._pixmaps[i].scaled(self.images[i].width, self.images[i].height, QtCore.Qt.KeepAspectRatio))
 
     def loadImages(self, images, xy=(0, 0), wh=(1, 1)):
-        assert (self.dnaChannel is not None and self.rngChannel is not None and
-                self.nChannels is not None), "Some parameters were not correctly set."
+        assert (self._meas.dnaChannel is not None and
+                self._meas.rngChannel is not None and
+                self._meas.nChannels is not None), "Some parameters were not correctly set."
         # assert (len(boundaries) == self.zstacks and len(
         #     lines) == self.zstacks), "boundaries and lines should be the same length as zstacks in the image."
 
         # crop the image
+        self.xy = np.array(xy).astype(np.int32)
+        self.wh = np.array(wh).astype(np.int32)
         x1, x2 = int(xy[0] - wh[0] / 2), int(xy[0] + wh[0] / 2)
         y1, y2 = int(xy[1] - wh[1] / 2), int(xy[1] + wh[1] / 2)
         self._images = images[:, y1:y2, x1:x2]
@@ -128,12 +127,9 @@ class StkRingWidget(QWidget):
 
         self._pixmaps = list()
 
-        for i in range(self.zstacks):
-            data = retrieve_image(images, channel=self.rngChannel, number_of_channels=self.nChannels,
-                                  zstack=i, number_of_zstacks=self.zstacks, frame=0)
-            self.dwidth, self.dheight = data.shape
-
-            imagePixmap = qpixmap_from(data)
+        for i in range(self._meas.nZstack):
+            self._meas.zstack = i
+            imagePixmap = self._meas.rngpixmap
             rect = QRect(x1, y1, wh[0], wh[1])
             cropped = imagePixmap.copy(rect)
             self._pixmaps.append(cropped)
@@ -144,61 +140,42 @@ class StkRingWidget(QWidget):
 
     def measure(self):
         if self._images.size == 0:
-            logger.warning("can't measure on an empty image!")
+            logger.warning("Can't measure an empty image!")
             return
-        logger.debug("computing nuclei boundaries")
 
         self._nucboundaries = list()
-        self.measurements = list()
-        for i in range(self.zstacks):
-            dnaimg = retrieve_image(self._images, channel=self.dnaChannel, number_of_channels=self.nChannels,
-                                    zstack=i, number_of_zstacks=self.zstacks, frame=0)
-            width, height = dnaimg.shape
-            x, y = int(width / 2), int(height / 2)
-            center_pt = Point(x, y)
-            lbl, boundaries = m.nuclei_segmentation(dnaimg, simp_px=self.pix_per_um / 2)
-
-            if boundaries is not None:
-                nucbnd = [b["boundary"] for b in boundaries if center_pt.within(b["boundary"])][0]
-                ring = retrieve_image(self._images, channel=self.rngChannel, number_of_channels=self.nChannels,
-                                      zstack=i, number_of_zstacks=self.zstacks, frame=0)
-
-                # measurements around polygon are done from the centroid used to crop all the z-stack
-                lines = m.measure_lines_around_polygon(ring, nucbnd, from_pt=center_pt, radius=int(width / 2),
-                                                       rng_thick=self.line_length, dl=self.dl, n_lines=self.nlines,
-                                                       pix_per_um=self.pix_per_um)
-                for k, ((ls, l), colr) in enumerate(zip(lines, itertools.cycle(self._colors))):
-                    if ls is not None:
-                        self.measurements.append({'n': k, 'x': x, 'y': y, 'z': i, 'l': l, 'c': colr,
-                                                  'ls0': ls.coords[0], 'ls1': ls.coords[1],
-                                                  'd': max(l) - min(l), 'sum': np.sum(l)})
-                logger.debug(f"{len(self.measurements)} lines obtained.")
+        for i in range(self._meas.nZstack):
+            self._meas.zstack = i
+            x, y = self.xy
+            w, h = self.wh
+            nuc = self._meas.nucleus(x, y)
+            if not nuc.empty:
+                nucbnd = affinity.translate(shapely.wkt.loads(nuc["value"].iloc[0]), -x + h / 2, -y + w / 2)
+                self._nucboundaries.append(nucbnd)
             else:
-                nucbnd = None
-
-            self._nucboundaries.append(nucbnd)
+                self._nucboundaries.append(None)
 
     # @profile
     def drawMeasurements(self, erase_bkg=False):
-        if not self.render or not self._nucboundaries: return
+        if not self.renderMeasurements or not self._nucboundaries:
+            return
         if erase_bkg:
             self._repaintImages()
         angle_delta = 2 * np.pi / self.nlines
         nim, width, height = self._images.shape
 
-        for i in range(self.zstacks):
-            if i > len(self._nucboundaries) - 1: continue
+        for i, n in enumerate(self._nucboundaries):
+            if not n:
+                continue
 
             painter = QPainter()
             painter.begin(self.images[i].pixmap())
             painter.setRenderHint(QPainter.Antialiasing)
 
-            n = self._nucboundaries[i]
-            if not n: continue
             nuc_pen = QPen(QBrush(QColor('white')), 1.1)
             nuc_pen.setStyle(QtCore.Qt.DotLine)
             painter.setPen(nuc_pen)
-            dl2 = self.line_length * self.pix_per_um / 2
+            dl2 = self.line_length * self._meas.pix_per_um / 2
 
             try:
                 # get nuclei external and internal boundaries as a polygons
@@ -216,12 +193,12 @@ class StkRingWidget(QWidget):
                 pt2 = Qt.QPoint(a * np.cos(alpha) + x, a * np.sin(alpha) + y)
                 painter.drawLine(pt1, pt2)
 
-                for me in self.measurements:
+                for ix, me in self._meas.lines().iterrows():
                     if me['n'] == self.selectedN:
                         if me['z'] == self.selectedZ and i == self.selectedZ:
-                            painter.setPen(QPen(QBrush(QColor(me['c'])), 1 * self.pix_per_um))
+                            painter.setPen(QPen(QBrush(QColor(me['c'])), 1 * self._meas.pix_per_um))
                         else:
-                            painter.setPen(QPen(QBrush(QColor('gray')), 0.1 * self.pix_per_um))
+                            painter.setPen(QPen(QBrush(QColor('gray')), 0.1 * self._meas.pix_per_um))
 
                         pts = [Qt.QPoint(x, y) for x, y in [me['ls0'], me['ls1']]]
                         painter.drawLine(pts[0], pts[1])
@@ -235,7 +212,7 @@ class StkRingWidget(QWidget):
         if self.measurements is not None:
             for me in self.measurements:
                 if me['n'] == self.selectedN:
-                    x = np.arange(start=0, stop=len(me['l']) * self.dl, step=self.dl)
+                    x = np.arange(start=0, stop=len(me['value']) * self.dl, step=self.dl)
                     lw = 0.1 if self.selectedZ is not None and me['z'] != self.selectedZ else 0.5
                     self.grph.ax.plot(x, me['l'], linewidth=lw, linestyle='-', color=me['c'], alpha=alpha, zorder=10,
                                       picker=5, label=me['z'])
@@ -263,11 +240,11 @@ class StkRingWidget(QWidget):
             # self.linePicked.emit()
 
     @property
-    def render(self):
+    def renderMeasurements(self):
         return self._render
 
-    @render.setter
-    def render(self, value):
+    @renderMeasurements.setter
+    def renderMeasurements(self, value):
         if value is not None:
             self._render = value
             self._repaintImages()

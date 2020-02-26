@@ -7,13 +7,11 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.ticker as ticker
 from matplotlib.ticker import EngFormatter
-
 from PyQt5 import QtCore, QtGui, uic
-from PyQt5.QtCore import QTimer, QPoint
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QPushButton,
-                             QHBoxLayout, QVBoxLayout, QStatusBar, QFileDialog)
+from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import (QFileDialog, QMainWindow, QStatusBar, QWidget)
 
-from gui._ring_label import RingImageQLabel, _nlin
+from gui._ring_label import RingImageQLabel
 from gui._widget_graph import GraphWidget
 from gui.stack_ring import StkRingWidget
 import measurements as m
@@ -25,6 +23,7 @@ pd.set_option('display.max_columns', 20)
 pd.set_option('display.max_rows', 100)
 
 
+# noinspection PyPep8Naming
 class RingWindow(QMainWindow):
     image: RingImageQLabel
     statusbar: QStatusBar
@@ -54,21 +53,21 @@ class RingWindow(QMainWindow):
         self.image.linePicked.connect(self.onLinePickedFromImage)
         self.image.nucleusPicked.connect(self.onNucleusPickedFromImage)
         self.image.dnaChannel = self.ctrl.dnaSpin.value()
-        self.image.actChannel = self.ctrl.actSpin.value()
+        self.image.rngChannel = self.ctrl.actSpin.value()
 
         self.grph = GraphWidget()
         self.grph.show()
         self.grphtimer = QTimer()
         self.grphtimer.setSingleShot(True)
 
-        self.stk = StkRingWidget(linePicked=self.onLinePickedFromStackGraph)
+        self.stk = StkRingWidget(self.image, linePicked=self.onLinePickedFromStackGraph)
 
         self.grph.linePicked.connect(self.onLinePickedFromGraph)
         # self.stk.linePicked.connect(self.onLinePickedFromStackGraph)
         self.grphtimer.timeout.connect(self._graph)
 
         self.image.dnaChannel = self.ctrl.dnaSpin.value()
-        self.image.actChannel = self.ctrl.actSpin.value()
+        self.image.rngChannel = self.ctrl.actSpin.value()
 
         self.measure_n = 0
         self.selectedLine = None
@@ -140,15 +139,18 @@ class RingWindow(QMainWindow):
 
     def _graph(self, alpha=1.0):
         self.grph.clear()
-        if self.image.measurements is not None:
-            for me in self.image.measurements:
-                x = np.arange(start=0, stop=len(me['l']) * self.image.dl, step=self.image.dl)
-                lw = 0.1 if self.image.selectedLine is not None and me != self.image.selectedLine else 0.5
-                self.grph.ax.plot(x, me['l'], linewidth=lw, linestyle='-', color=me['c'], alpha=alpha, zorder=10,
-                                  picker=5, label=me['n'])  # , marker='o', markersize=1)
-            self.grph.format_ax()
-            self.statusbar.showMessage("ptp: %s" % ["%d " % me['d'] for me in self.image.measurements])
-            self.grph.canvas.draw()
+        lines = self.image.lines(self.image.currNucleusId)
+        if lines.empty:
+            return
+
+        for ix, me in lines.iterrows():
+            x = np.arange(start=0, stop=len(me['value']) * self.image.dl, step=self.image.dl)
+            lw = 0.1 if self.image.selectedLine is not None and me != self.image.selectedLine else 0.5
+            self.grph.ax.plot(x, me['value'], linewidth=lw, linestyle='-', color=me['c'], alpha=alpha, zorder=10,
+                              picker=5, label=int(me['li']))  # , marker='o', markersize=1)
+        self.grph.format_ax()
+        # self.statusbar.showMessage("ptp: %s" % ["%d " % me['d'] for me in self.image.lines().iterrows()])
+        self.grph.canvas.draw()
 
     @QtCore.pyqtSlot()
     def onImgToggle(self):
@@ -161,8 +163,8 @@ class RingWindow(QMainWindow):
     @QtCore.pyqtSlot()
     def onRenderChk(self):
         logger.debug('onRenderChk')
-        self.image.render = self.ctrl.renderChk.isChecked()
-        self.stk.render = self.ctrl.renderChk.isChecked()
+        self.image.renderMeasurements = self.ctrl.renderChk.isChecked()
+        self.stk.renderMeasurements = self.ctrl.renderChk.isChecked()
 
     @QtCore.pyqtSlot()
     def onOpenButton(self):
@@ -189,15 +191,11 @@ class RingWindow(QMainWindow):
             self.currZ = None
 
             self.stk.close()
-            self.stk = StkRingWidget(linePicked=self.onLinePickedFromStackGraph,
-                                     stacks=self.image.nZstack,
-                                     n_channels=self.image.nChannels,
-                                     dna_ch=self.image.dnaChannel,
-                                     rng_ch=self.image.actChannel,
+            self.stk = StkRingWidget(self.image,
+                                     linePicked=self.onLinePickedFromStackGraph,
                                      line_length=self.line_length,
                                      dl=self.image.dl,
-                                     lines_to_measure=_nlin,
-                                     pix_per_um=self.image.pix_per_um
+                                     lines_to_measure=self.image._nlin
                                      )
             # self.stk.linePicked.connect(self.onLinePickedFromStackGraph)
             self.stk.loadImages(self.image.images, xy=(100, 100), wh=(200, 200))
@@ -218,7 +216,7 @@ class RingWindow(QMainWindow):
     def onNucleusPickedFromImage(self):
         logger.debug('onNucleusPickedFromImage')
         self.stk.dnaChannel = self.image.dnaChannel
-        self.stk.rngChannel = self.image.actChannel
+        self.stk.rngChannel = self.image.rngChannel
         self.stk.selectedN = self.image.selectedLine['n'] if self.image.selectedLine is not None else 0
 
         minx, miny, maxx, maxy = self.image.currNucleus.bounds
@@ -257,7 +255,7 @@ class RingWindow(QMainWindow):
         logger.debug('onActValChange')
         val = self.ctrl.actSpin.value() % self.image.nChannels
         self.ctrl.actSpin.setValue(val)
-        self.image.actChannel = val
+        self.image.rngChannel = val
         if self.ctrl.actChk.isChecked():
             self.image.activeCh = "act"
         self.ctrl.actChk.setChecked(True)
