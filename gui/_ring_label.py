@@ -48,7 +48,7 @@ class RingImageQLabel(QLabel, Measure):
         self._selectedLine = None
         self.measureLocked = False
 
-        self.setMouseTracking(False)
+        self.setMouseTracking(True)
         self.clear()
 
     @property
@@ -68,19 +68,16 @@ class RingImageQLabel(QLabel, Measure):
 
     @property
     def selectedLine(self):
-        # return self._selectedLine['n'] if self._selectedLine is not None else None
-        return self._selectedLine
+        return self._selectedLine['li'].iloc[0] if self._selectedLine is not None else None
 
     @selectedLine.setter
     def selectedLine(self, value):
         if type(value) == dict:
             self._selectedLine = value
-        elif type(value) == int:
-            self._selectedLine = None
-            for me in self.measurements:
-                if me['n'] == value:
-                    self._selectedLine = me
-                    self._repaint()
+        elif np.isscalar(value):
+            nuclines = self.lines(self.currNucleusId)
+            self._selectedLine = nuclines[nuclines["li"] == value]
+            self._repaint()
         else:
             self._selectedLine = None
 
@@ -140,19 +137,20 @@ class RingImageQLabel(QLabel, Measure):
             if event.buttons() == QtCore.Qt.NoButton:
                 pos = event.pos()
                 # convert to image pixel coords
-                x = pos.x() * self.dwidth / self.width()
-                y = pos.y() * self.dheight / self.height()
+                x = int(pos.x() * self.dwidth / self.width())
+                y = int(pos.y() * self.dheight / self.height())
                 self.mousePos = Qt.QPoint(x, y)
 
                 # print("------------------------------------------------------")
-                for ix, me in self.lines().iterrows():
+                for ix, me in self.lines(self.currNucleusId).iterrows():
                     pts = [Qt.QPoint(x, y) for x, y in [me['ls0'], me['ls1']]]
                     # print("X %d %d %d | Y %d %d %d" % (
-                    #     min(pts[0].x(), pts[1].x()), self.mouse_pos.x(), max(pts[0].x(), pts[1].x()),
-                    #     min(pts[0].y(), pts[1].y()), self.mouse_pos.y(), max(pts[0].y(), pts[1].y())))
+                    #     min(pts[0].x(), pts[1].x()), self.mousePos.x(), max(pts[0].x(), pts[1].x()),
+                    #     min(pts[0].y(), pts[1].y()), self.mousePos.y(), max(pts[0].y(), pts[1].y())))
                     if is_between(self.mousePos, pts[0], pts[1]):
-                        if me != self.selectedLine:
-                            self.selectedLine = me
+                        if me['li'] != self.selectedLine:
+                            logger.debug(f"Mouse over line {me['li']}.")
+                            self.selectedLine = me['li']
                             self.lineUpdated.emit()
                             self._repaint()
                             break
@@ -174,9 +172,10 @@ class RingImageQLabel(QLabel, Measure):
                 pts = [Qt.QPoint(x, y) for x, y in [me['ls0'], me['ls1']]]
                 if is_between(self.mousePos, pts[0], pts[1]):
                     anyLineSelected = True
-                    if me != self.selectedLine:
+                    if me['li'] != self.selectedLine:
                         lineChanged = True
-                        self.selectedLine = me
+                        self.selectedLine = me['li']
+                        logger.debug(f"Mouse click over line {me['li']}.")
                         break
 
         # check if pointer clicked inside any nuclei
@@ -278,9 +277,11 @@ class RingImageQLabel(QLabel, Measure):
                 painter.setBrush(QBrush(QtCore.Qt.NoBrush))
 
         for ix, me in self.lines(self.currNucleusId).iterrows():
-            painter.setPen(
-                QPen(QBrush(QColor(me['c'])), 2 * self.pix_per_um if (
-                        self.selectedLine is not None and me == self.selectedLine) else self.pix_per_um))
+            thickness = self.pix_per_um
+            thickness *= (2 if (self.selectedLine is not None and
+                                self.selectedLine == me['li'])
+                          else 1)
+            painter.setPen(QPen(QBrush(QColor(me['c'])), thickness))
             pts = [Qt.QPoint(x, y) for x, y in [me['ls0'], me['ls1']]]
             painter.drawLine(pts[0], pts[1])
 

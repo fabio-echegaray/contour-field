@@ -235,5 +235,7 @@ class Measure:
 def get_from_df(df, _type, _id, z):
     if df.empty:
         return pd.DataFrame()
+    if _id is None:
+        _id = df["id"].unique()
 
-    return df[(df['type'] == _type) & (df['id'] == _id) & (df['z'] == z)]
+    return df[(df['type'] == _type) & (df['id'].isin(np.array(_id).ravel())) & (df['z'] == z)]

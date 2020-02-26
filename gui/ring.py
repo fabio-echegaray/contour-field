@@ -145,7 +145,7 @@ class RingWindow(QMainWindow):
 
         for ix, me in lines.iterrows():
             x = np.arange(start=0, stop=len(me['value']) * self.image.dl, step=self.image.dl)
-            lw = 0.1 if self.image.selectedLine is not None and me != self.image.selectedLine else 0.5
+            lw = 0.1 if me['li'] != self.image.selectedLine else 0.5
             self.grph.ax.plot(x, me['value'], linewidth=lw, linestyle='-', color=me['c'], alpha=alpha, zorder=10,
                               picker=5, label=int(me['li']))  # , marker='o', markersize=1)
         self.grph.format_ax()
@@ -192,6 +192,7 @@ class RingWindow(QMainWindow):
 
             self.stk.close()
             self.stk = StkRingWidget(self.image,
+                                     nucleus_id=self.image.currNucleusId,
                                      linePicked=self.onLinePickedFromStackGraph,
                                      line_length=self.line_length,
                                      dl=self.image.dl,
@@ -207,8 +208,8 @@ class RingWindow(QMainWindow):
     def onImgUpdate(self):
         # logger.debug(f"onImgUpdate")
         self.ctrl.renderChk.setChecked(True)
-        self.stk.selectedN = self.image.selectedLine['n'] if self.image.selectedLine is not None else 0
-        logger.debug(f"onImgUpdate. Selected line is {self.stk.selectedN}")
+        self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
+        logger.debug(f"onImgUpdate. Selected line is {self.stk.selectedLineId}")
         self.stk.drawMeasurements(erase_bkg=True)
         self.grphtimer.start(1000)
 
@@ -217,7 +218,8 @@ class RingWindow(QMainWindow):
         logger.debug('onNucleusPickedFromImage')
         self.stk.dnaChannel = self.image.dnaChannel
         self.stk.rngChannel = self.image.rngChannel
-        self.stk.selectedN = self.image.selectedLine['n'] if self.image.selectedLine is not None else 0
+        self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
+        self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
 
         minx, miny, maxx, maxy = self.image.currNucleus.bounds
         r = int(max(maxx - minx, maxy - miny) / 2)
@@ -321,7 +323,8 @@ class RingWindow(QMainWindow):
             self.currMeasurement = self.image.measurements
             self.currN = self.selectedLine
             self.currZ = self.image.zstack
-            self.stk.selectedN = self.currN
+            self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
+            self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
             self.stk.selectedZ = self.currZ
 
             try:
@@ -334,10 +337,12 @@ class RingWindow(QMainWindow):
     @QtCore.pyqtSlot()
     def onLinePickedFromStackGraph(self):
         logger.debug('onLinePickedFromStackGraph')
-        self.selectedLine = self.stk.selectedN if self.stk.selectedN is not None else None
+        self.selectedLine = self.stk.selectedLine if self.stk.selectedLine is not None else None
         if self.selectedLine is not None:
             self.currMeasurement = self.stk.measurements
-            self.currN = self.stk.selectedN
+            self.currN = self.stk.selectedLine
+            self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
+            self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
             self.currZ = self.stk.selectedZ
 
             self.statusbar.showMessage(f"line {self.currN} of z-stack {self.currZ} selected.")
@@ -346,12 +351,13 @@ class RingWindow(QMainWindow):
     @QtCore.pyqtSlot()
     def onLinePickedFromImage(self):
         logger.debug('onLinePickedFromImage')
-        self.selectedLine = self.image.selectedLine['n'] if self.image.selectedLine is not None else None
+        self.selectedLine = self.image.selectedLine if self.image.selectedLine is not None else None
         if self.selectedLine is not None:
             self.currMeasurement = self.image.measurements
             self.currN = self.selectedLine
             self.currZ = self.image.zstack
-            self.stk.selectedN = self.currN
+            self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
+            self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
             self.stk.selectedZ = self.currZ
 
             self.statusbar.showMessage("line %d selected" % self.selectedLine)

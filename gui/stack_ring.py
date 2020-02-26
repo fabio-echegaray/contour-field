@@ -22,7 +22,7 @@ class StkRingWidget(QWidget):
     images: List[QLabel]
     linePicked = Qt.pyqtSignal()
 
-    def __init__(self, measure: Measure, parent=None,
+    def __init__(self, measure: Measure, parent=None, nucleus_id=None,
                  line_length=4, dl=0.05, lines_to_measure=1, **kwargs):
         super().__init__(parent, **kwargs)
         # path = os.path.join(sys.path[0], __package__)
@@ -46,7 +46,8 @@ class StkRingWidget(QWidget):
         self.line_length = line_length
 
         self._meas = measure
-        self.selectedN = None
+        self.selectedNucId = nucleus_id
+        self.selectedLineId = None
         self.selectedZ = None
         self._render = True
 
@@ -127,12 +128,14 @@ class StkRingWidget(QWidget):
 
         self._pixmaps = list()
 
+        _old_zstk = self._meas.zstack
         for i in range(self._meas.nZstack):
             self._meas.zstack = i
             imagePixmap = self._meas.rngpixmap
             rect = QRect(x1, y1, wh[0], wh[1])
             cropped = imagePixmap.copy(rect)
             self._pixmaps.append(cropped)
+        self._meas.zstack = _old_zstk
 
         self._repaintImages()
         self.update()
@@ -143,6 +146,7 @@ class StkRingWidget(QWidget):
             logger.warning("Can't measure an empty image!")
             return
 
+        _old_zstk = self._meas.zstack
         self._nucboundaries = list()
         for i in range(self._meas.nZstack):
             self._meas.zstack = i
@@ -154,6 +158,7 @@ class StkRingWidget(QWidget):
                 self._nucboundaries.append(nucbnd)
             else:
                 self._nucboundaries.append(None)
+        self._meas.zstack = _old_zstk
 
     # @profile
     def drawMeasurements(self, erase_bkg=False):
@@ -185,8 +190,8 @@ class StkRingWidget(QWidget):
             except Exception as e:
                 logger.error(e)
 
-            if self.selectedN is not None:
-                alpha = angle_delta * self.selectedN
+            if self.selectedLineId is not None:
+                alpha = angle_delta * self.selectedLineId
                 x, y = int(width / 2), int(height / 2)
                 a = int(width / 2)
                 pt1 = Qt.QPoint(x, y)
@@ -194,14 +199,13 @@ class StkRingWidget(QWidget):
                 painter.drawLine(pt1, pt2)
 
                 for ix, me in self._meas.lines().iterrows():
-                    if me['n'] == self.selectedN:
-                        if me['z'] == self.selectedZ and i == self.selectedZ:
-                            painter.setPen(QPen(QBrush(QColor(me['c'])), 1 * self._meas.pix_per_um))
-                        else:
-                            painter.setPen(QPen(QBrush(QColor('gray')), 0.1 * self._meas.pix_per_um))
+                    if self.selectedLineId is not None and me['li'] == self.selectedLineId:
+                        painter.setPen(QPen(QBrush(QColor(me['c'])), 1 * self._meas.pix_per_um))
+                    else:
+                        painter.setPen(QPen(QBrush(QColor('gray')), 0.1 * self._meas.pix_per_um))
 
-                        pts = [Qt.QPoint(x, y) for x, y in [me['ls0'], me['ls1']]]
-                        painter.drawLine(pts[0], pts[1])
+                    pts = [Qt.QPoint(x, y) for x, y in [me['ls0'], me['ls1']]]
+                    painter.drawLine(pts[0], pts[1])
 
             painter.end()
         self.grphtimer.start(1000)
@@ -209,21 +213,25 @@ class StkRingWidget(QWidget):
 
     def _graph(self, alpha=1.0):
         self.grph.clear()
-        if self.measurements is not None:
-            for me in self.measurements:
-                if me['n'] == self.selectedN:
-                    x = np.arange(start=0, stop=len(me['value']) * self.dl, step=self.dl)
-                    lw = 0.1 if self.selectedZ is not None and me['z'] != self.selectedZ else 0.5
-                    self.grph.ax.plot(x, me['l'], linewidth=lw, linestyle='-', color=me['c'], alpha=alpha, zorder=10,
-                                      picker=5, label=me['z'])
-            self.grph.format_ax()
-            self.grph.canvas.draw()
+        _old_zstk = self._meas.zstack
+        for i in range(self._meas.nZstack):
+            self._meas.zstack = i
+            if not self._meas.lines().empty:
+                for ix, me in self._meas.lines().iterrows():
+                    if me['li'] == self.selectedLineId:
+                        x = np.arange(start=0, stop=len(me['value']) * self.dl, step=self.dl)
+                        lw = 0.1 if self.selectedZ is not None and me['z'] != self.selectedZ else 0.5
+                        self.grph.ax.plot(x, me['value'], linewidth=lw, linestyle='-', color=me['c'], alpha=alpha,
+                                          zorder=10, picker=5, label=me['z'])
+        self._meas.zstack = _old_zstk
+        self.grph.format_ax()
+        self.grph.canvas.draw()
 
     @property
     def selectedLine(self):
-        if self.selectedN is not None and self.selectedZ is not None:
-            for me in self.measurements:
-                if me['n'] == self.selectedN and me['z'] == self.selectedZ:
+        if self.selectedLineId is not None and self.selectedZ is not None:
+            for ix, me in self._meas.lines().iterrows():
+                if me['li'] == self.selectedLineId and me['z'] == self.selectedZ:
                     return me
         return None
 
