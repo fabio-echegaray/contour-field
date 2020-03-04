@@ -14,14 +14,10 @@ import measurements as m
 logger = logging.getLogger('gui.measure')
 
 
-# noinspection PyPep8Naming
-class Measure:
-    _nlin = 20
-    _colors = sns.husl_palette(_nlin, h=.5).as_hex()
-    dl = 0.05
-
+class FileImageMixin(object):
     def __init__(self):
         self._file = None
+        self._zstack = 0
 
         self.images = None
         self.pix_per_um = None
@@ -30,29 +26,18 @@ class Measure:
         self.nChannels = 0
         self.nZstack = 0
 
-        self._zstack = 0
-        self._dnaChannel = 0
-        self._rngChannel = 0
-
-        self._dnaimage = None
-        self._rngimage = None
-        self._dnapixmap = None
-        self._rngpixmap = None
-        self.measurements = pd.DataFrame()
-
     @property
     def file(self):
         return self._file
 
     @file.setter
-    def file(self, file):
-        if file is not None:
-            logger.info('Loading %s' % file)
-            self._file = file
-            self.images, self.pix_per_um, _, self.nFrames, self.nChannels = find_image(file)
+    def file(self, value):
+        if value is not None:
+            logger.info('Loading %s' % value)
+            self._file = value
+            self.images, self.pix_per_um, _, self.nFrames, self.nChannels = find_image(value)
             self.um_per_pix = 1 / self.pix_per_um
             self.nZstack = int(len(self.images) / self.nFrames / self.nChannels)
-            self.measurements = pd.DataFrame()
             logger.info("Pixels per um: %0.4f" % self.pix_per_um)
 
     @property
@@ -62,6 +47,30 @@ class Measure:
     @zstack.setter
     def zstack(self, value):
         self._zstack = value
+
+
+# noinspection PyPep8Naming
+class Measure(FileImageMixin):
+    _nlin = 20
+    _colors = sns.husl_palette(_nlin, h=.5).as_hex()
+    dl = 0.05
+
+    def __init__(self):
+        super(FileImageMixin, self).__init__()
+        self._dnaChannel = 0
+        self._rngChannel = 0
+
+        self._dnaimage = None
+        self._rngimage = None
+        self._dnapixmap = None
+        self._rngpixmap = None
+        self.measurements = pd.DataFrame()
+
+    @FileImageMixin.file.setter
+    def file(self, value):
+        if value is not None:
+            super(Measure, type(self)).file.fset(self, value)
+            self.measurements = pd.DataFrame()
 
     @property
     def dnaChannel(self):
