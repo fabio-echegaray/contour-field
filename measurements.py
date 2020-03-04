@@ -20,7 +20,6 @@ from scipy.ndimage.morphology import distance_transform_edt
 from shapely.geometry.point import Point
 from shapely import affinity
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('hhlab')
 
 REJECTION_TOUCHING_FRAME = -1
