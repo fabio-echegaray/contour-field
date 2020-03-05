@@ -175,13 +175,12 @@ def nuclei_segmentation(image, compute_distance=False, radius=10, simp_px=None):
 
     # store all contours found
     contours = measure.find_contours(labels, 0.9)
-    tform = tf.SimilarityTransform(rotation=math.pi / 2)
 
     _list = list()
     for k, contr in enumerate(contours):
-        contr = tform(contr)
-        contr[:, 0] *= -1
-        pol = Polygon(contr)
+        # as the find_contours function returns values in (row, column) form,
+        # we need to flip the columns to match (x, y) = (col, row)
+        pol = Polygon(np.fliplr(contr))
         if simp_px is not None:
             pol = (pol.buffer(simp_px, join_style=1)
                    # .simplify(simp_px / 10, preserve_topology=True)
@@ -197,8 +196,9 @@ def nuclei_segmentation(image, compute_distance=False, radius=10, simp_px=None):
 
 
 def centrosomes(image, min_size=0.2, max_size=0.5, threshold=0.1):
+    # FIXME: change transform for simple rr=y cc=x swap
     blobs_log = feature.blob_log(image, min_sigma=min_size, max_sigma=max_size, num_sigma=10, threshold=threshold)
-    # blobs_log = feature.blob_doh(image, min_sigma=0.05, max_sigma=max_sigma, num_sigma=10, threshold=.1)
+
     # Compute radii in the 3rd column.
     blobs_log[:, 2] = blobs_log[:, 2] * sqrt(2)
     tform = tf.SimilarityTransform(rotation=math.pi / 2)
@@ -318,11 +318,11 @@ def measure_lines_around_polygon(image, polygon, from_pt=None, radius=None, pix_
     rng_thick *= pix_per_um
     if dl is not None:
         dl *= pix_per_um
-    nsteps = int(rng_thick / dl)
     angle_delta = 2 * np.pi / n_lines
-    frame = Polygon([(0, 0), (0, width), (height, width), (height, 0)]).buffer(-rng_thick)
 
+    frame = Polygon([(0, 0), (0, width), (height, width), (height, 0)]).buffer(-rng_thick)
     minx, miny, maxx, maxy = polygon.bounds
+
     radius = radius if radius is not None else max(maxx - minx, maxy - miny)
     center = from_pt if from_pt is not None else polygon.centroid
     for k, angle in enumerate([angle_delta * i for i in range(n_lines)]):
@@ -345,26 +345,23 @@ def measure_lines_around_polygon(image, polygon, from_pt=None, radius=None, pix_
                 # compute normal vector angle
                 dx = pt1[0] - pt0[0]
                 dy = pt1[1] - pt0[1]
-                alpha = np.arctan2(dy, dx)
+                # as arctan2 argument order is  y, x (and as we're doing a rotation) -> x=-dy y=dx)
+                alpha = np.arctan2(dx, -dy)
                 break
 
-        # lin = LineString([Point(0, 0), Point(25, 25)])
         pt0 = Point(pt.x - np.cos(alpha) * rng_thick / 2, pt.y - np.sin(alpha) * rng_thick / 2)
         pt1 = Point(pt.x + np.cos(alpha) * rng_thick / 2, pt.y + np.sin(alpha) * rng_thick / 2)
         lin = LineString([pt0, pt1])
-        lin = affinity.rotate(lin, math.pi / 2, origin='centroid', use_radians=True)
-
-        # reflection over line y=x. don't ask me why. (i think it might have to do with rr cc xx yy potential swap
-        rlin = affinity.affine_transform(lin, [0, 1, 1, 0, 0, 0])
 
         # if parameter dl is present, make measurements every dl (possibly hitting a pixel more than one time)
         if dl is not None:
-            cc, rr = np.array(
-                [rlin.interpolate((i / nsteps), normalized=True).coords.xy for i in range(nsteps + 1)],
+            nsteps = int(rng_thick / dl)
+            rr, cc = np.array(
+                [lin.interpolate((i / nsteps), normalized=True).coords.xy for i in range(nsteps + 1)],
                 dtype=np.int16).reshape(nsteps + 1, 2).T
         else:
             logger.warning("line measurement not equally spaced.")
-            (c0, r0), (c1, r1) = rlin.coords
+            (r0, c0), (r1, c1) = lin.coords
             r0, c0, r1, c1 = np.array([r0, c0, r1, c1]).astype(int)
             rr, cc = draw.line(r0, c0, r1, c1)
 
@@ -375,7 +372,8 @@ def measure_lines_around_polygon(image, polygon, from_pt=None, radius=None, pix_
         # image[ccc, rrr] = 255
         # image[cc, rr] = 255
         #
-        # ax = plt.gca()
+        # fig = plt.figure(20)
+        # ax = fig.gca()
         # plt.imshow(image, origin='lower')
         # # n_um = affinity.scale(n, xfact=self.um_per_pix, yfact=self.um_per_pix, origin=(0, 0, 0))
         # p.render_polygon(polygon, zorder=10, ax=ax)
@@ -383,5 +381,5 @@ def measure_lines_around_polygon(image, polygon, from_pt=None, radius=None, pix_
         # # ax.plot(*rlin.xy, linewidth=1, linestyle='-', c='red')
         # ax.plot(pt.x, pt.y, marker='o', markersize=5)
         #
-        # plt.show()
+        # # plt.show()
         yield lin, image[cc, rr]
