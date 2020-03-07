@@ -31,7 +31,7 @@ class FileImageMixin(object):
         return self._file
 
     @file.setter
-    def file(self, value):
+    def file(self, value: str):
         if value is not None:
             logger.info('Loading %s' % value)
             self._file = value
@@ -47,6 +47,17 @@ class FileImageMixin(object):
     @zstack.setter
     def zstack(self, value):
         self._zstack = value
+
+    def fileimage_from(self, fi):
+        assert issubclass(type(fi), FileImageMixin), "Not the right type to load values from!"
+        self._file = fi.file
+        self._zstack = fi.zstack
+        self.images = fi.images
+        self.pix_per_um = fi.pix_per_um
+        self.um_per_pix = fi.um_per_pix
+        self.nFrames = fi.nFrames
+        self.nChannels = fi.nChannels
+        self.nZstack = fi.nZstack
 
 
 # noinspection PyPep8Naming
