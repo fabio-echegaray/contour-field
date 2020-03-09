@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import (QFileDialog, QMainWindow, QStatusBar, QWidget)
 from gui._ring_label import RingImageQLabel
 from gui._widget_graph import GraphWidget
 from gui.stack_ring import StkRingWidget
+from rectification import TestSplineApproximation, TestPiecewiseLinearRectification, TestFunctionRectification
 import measurements as m
 
 logger = logging.getLogger('ring.gui')
@@ -220,6 +221,24 @@ class RingWindow(QMainWindow):
         self.stk.rngChannel = self.image.rngChannel
         self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
         self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
+
+        # test rectification code
+        dl = 4
+        ndl = 10
+        nth = 100
+        ppdl = 1
+        ppth = 1
+
+        tsplaprx = TestSplineApproximation(self.image.currNucleus, self.image)
+        tsplaprx.test_fit()
+        tsplaprx.plot_grid()
+
+        trct = TestPiecewiseLinearRectification(tsplaprx,
+                                                dl=dl, n_dl=ndl, n_theta=nth, pix_per_dl=ppdl, pix_per_theta=ppth)
+        trct.plot_rectification()
+
+        tfnrect = TestFunctionRectification(tsplaprx, dl=dl, n_dl=ndl, n_theta=nth, pix_per_dl=ppdl, pix_per_theta=ppth)
+        tfnrect.plot_rectification()
 
         minx, miny, maxx, maxy = self.image.currNucleus.bounds
         r = int(max(maxx - minx, maxy - miny) / 2)
