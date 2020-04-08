@@ -4,7 +4,6 @@ import time
 import numpy as np
 from shapely.geometry import Polygon
 from skimage.transform import PiecewiseAffineTransform, warp
-from symfit import Eq, Fit, cos, parameters, pi, sin, variables
 from scipy.interpolate import UnivariateSpline
 
 from gui._image_loading import retrieve_image
@@ -69,65 +68,6 @@ class BaseApproximation(FileImageMixin):
             return np.arctan2(dx, -dy)
         else:
             return np.nan
-
-
-@timeit
-def harmonic_approximation(polygon: Polygon, n=3):
-    def fourier_series(x, f, n=0):
-        """
-        Returns a symbolic fourier series of order `n`.
-
-        :param n: Order of the fourier series.
-        :param x: Independent variable
-        :param f: Frequency of the fourier series
-        """
-        # Make the parameter objects for all the terms
-        a0, *cos_a = parameters(','.join(['a{}'.format(i) for i in range(0, n + 1)]))
-        sin_b = parameters(','.join(['b{}'.format(i) for i in range(1, n + 1)]))
-        # Construct the series
-        series = a0 + sum(ai * cos(i * f * x) + bi * sin(i * f * x)
-                          for i, (ai, bi) in enumerate(zip(cos_a, sin_b), start=1))
-        return series
-
-    x, y = variables('x, y')
-    w, = parameters('w')
-    fourier = fourier_series(x, f=w, n=n)
-    model_dict = {y: fourier}
-    print(model_dict)
-
-    # Extract data from argument
-    # FIXME: how to make a clockwise strictly increasing curve?
-    xdata, ydata = polygon.exterior.xy
-    t = np.linspace(0, 2 * np.pi, num=len(xdata))
-
-    constr = [
-        # Ge(x, 0), Le(x, 2 * pi),
-        Eq(fourier.subs({x: 0}), fourier.subs({x: 2 * pi})),
-        Eq(fourier.diff(x).subs({x: 0}), fourier.diff(x).subs({x: 2 * pi})),
-        # Eq(fourier.diff(x, 2).subs({x: 0}), fourier.diff(x, 2).subs({x: 2 * pi})),
-    ]
-    print(constr)
-
-    fit_x = Fit(model_dict, x=t, y=xdata, constraints=constr)
-    fit_y = Fit(model_dict, x=t, y=ydata, constraints=constr)
-    fitx_result = fit_x.execute()
-    fity_result = fit_y.execute()
-    print(fitx_result)
-    print(fity_result)
-
-    # Define function that generates the curve
-    def curve_lambda(_t):
-        return np.array(
-            [
-                fit_x.model(x=_t, **fitx_result.params).y,
-                fit_y.model(x=_t, **fity_result.params).y
-            ]
-        ).ravel()
-
-    # code to test if fit is correct
-    plot_fit(polygon, curve_lambda, t, title='Harmonic Approximation')
-
-    return curve_lambda
 
 
 class SplineApproximation(BaseApproximation):

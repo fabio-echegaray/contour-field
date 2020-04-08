@@ -7,7 +7,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.ticker as ticker
 from matplotlib.ticker import EngFormatter
-from PyQt5 import QtCore, QtGui, uic
+from PyQt5 import QtCore, QtWidgets, uic
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import (QFileDialog, QMainWindow, QStatusBar, QWidget)
 
@@ -60,7 +60,7 @@ class RingWindow(QMainWindow):
         self.grphtimer = QTimer()
         self.grphtimer.setSingleShot(True)
 
-        self.stk = StkRingWidget(self.image, linePicked=self.onLinePickedFromStackGraph)
+        # self.stk = StkRingWidget(self.image, linePicked=self.onLinePickedFromStackGraph)
 
         self.grph.linePicked.connect(self.onLinePickedFromGraph)
         # self.stk.linePicked.connect(self.onLinePickedFromStackGraph)
@@ -82,7 +82,7 @@ class RingWindow(QMainWindow):
 
         self.show()
         self.grph.show()
-        self.stk.show()
+        # self.stk.show()
         self.ctrl.show()
         self.move(0, 0)
         self.resizeEvent(None)
@@ -99,7 +99,7 @@ class RingWindow(QMainWindow):
     def moveEvent(self, QMoveEvent):
         self.ctrl.move(self.frameGeometry().topRight())
         self.grph.move(self.geometry().bottomLeft())
-        self.stk.move(self.ctrl.frameGeometry().topRight())
+        # self.stk.move(self.ctrl.frameGeometry().topRight())
 
     def closeEvent(self, event):
         self._saveCurrentFileMeasurements()
@@ -109,13 +109,13 @@ class RingWindow(QMainWindow):
         #     self.df.to_csv(os.path.join(os.path.dirname(self.image.file), "ringlines.csv"))
         self.grph.close()
         self.ctrl.close()
-        self.stk.close()
+        # self.stk.close()
 
     def focusInEvent(self, QFocusEvent):
         logger.debug('focusInEvent')
         self.ctrl.activateWindow()
         self.grph.activateWindow()
-        self.stk.focusInEvent(None)
+        # self.stk.focusInEvent(None)
 
     def showEvent(self, event):
         self.setFocus()
@@ -178,7 +178,7 @@ class RingWindow(QMainWindow):
         path = os.path.dirname(self.file)
         if self.image.file is not None:
             self.statusbar.showMessage("current file: %s" % os.path.basename(self.image.file))
-        flt = "zeiss(*.czi)"
+        flt = "Tiff files(*.tif *.tiff);;Zeiss(*.czi)"
         f = QFileDialog.getOpenFileName(qfd, "Open File", path, flt)
         if len(f) > 0:
             self._open(f[0])
@@ -196,18 +196,18 @@ class RingWindow(QMainWindow):
         self.currN = None
         self.currZ = None
 
-        self.stk.close()
-        self.stk = StkRingWidget(self.image,
-                                 nucleus_id=self.image.currNucleusId,
-                                 linePicked=self.onLinePickedFromStackGraph,
-                                 line_length=self.line_length,
-                                 dl=self.image.dl,
-                                 lines_to_measure=self.image._nlin
-                                 )
-        # self.stk.linePicked.connect(self.onLinePickedFromStackGraph)
-        self.stk.loadImages(self.image.images, xy=(100, 100), wh=(200, 200))
-        self.stk.hide()
-        self.stk.show()
+        # self.stk.close()
+        # self.stk = StkRingWidget(self.image,
+        #                          nucleus_id=self.image.currNucleusId,
+        #                          linePicked=self.onLinePickedFromStackGraph,
+        #                          line_length=self.line_length,
+        #                          dl=self.image.dl,
+        #                          lines_to_measure=self.image._nlin
+        #                          )
+        # # self.stk.linePicked.connect(self.onLinePickedFromStackGraph)
+        # self.stk.loadImages(self.image.images, xy=(100, 100), wh=(200, 200))
+        # self.stk.hide()
+        # self.stk.show()
         self.moveEvent(None)
 
     @QtCore.pyqtSlot()
@@ -216,41 +216,41 @@ class RingWindow(QMainWindow):
         self.ctrl.renderChk.setChecked(True)
         self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
         logger.debug(f"onImgUpdate. Selected line is {self.stk.selectedLineId}")
-        self.stk.drawMeasurements(erase_bkg=True)
+        # self.stk.drawMeasurements(erase_bkg=True)
         self.grphtimer.start(1000)
 
     @QtCore.pyqtSlot()
     def onNucleusPickedFromImage(self):
         logger.debug('onNucleusPickedFromImage')
-        self.stk.dnaChannel = self.image.dnaChannel
-        self.stk.rngChannel = self.image.rngChannel
-        self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
-        self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
+        # self.stk.dnaChannel = self.image.dnaChannel
+        # self.stk.rngChannel = self.image.rngChannel
+        # self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
+        # self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
 
-        # test rectification code
-        dl = 4
-        ndl = 10
-        nth = 100
-        ppdl = 1
-        ppth = 1
-
-        tsplaprx = TestSplineApproximation(self.image.currNucleus, self.image)
-        tsplaprx.test_fit()
-        tsplaprx.plot_grid()
-
-        trct = TestPiecewiseLinearRectification(tsplaprx,
-                                                dl=dl, n_dl=ndl, n_theta=nth, pix_per_dl=ppdl, pix_per_theta=ppth)
-        trct.plot_rectification()
-
-        tfnrect = TestFunctionRectification(tsplaprx, dl=dl, n_dl=ndl, n_theta=nth, pix_per_dl=ppdl, pix_per_theta=ppth)
-        tfnrect.plot_rectification()
-
-        minx, miny, maxx, maxy = self.image.currNucleus.bounds
-        r = int(max(maxx - minx, maxy - miny) / 2)
-        self.stk.loadImages(self.image.images, xy=[n[0] for n in self.image.currNucleus.centroid.xy],
-                            wh=(r * self.image.pix_per_um, r * self.image.pix_per_um))
-        self.stk.measure()
-        self.stk.drawMeasurements(erase_bkg=True)
+        # # test rectification code
+        # dl = 4
+        # ndl = 10
+        # nth = 100
+        # ppdl = 1
+        # ppth = 1
+        #
+        # tsplaprx = TestSplineApproximation(self.image.currNucleus, self.image)
+        # tsplaprx.test_fit()
+        # tsplaprx.plot_grid()
+        #
+        # trct = TestPiecewiseLinearRectification(tsplaprx,
+        #                                         dl=dl, n_dl=ndl, n_theta=nth, pix_per_dl=ppdl, pix_per_theta=ppth)
+        # trct.plot_rectification()
+        #
+        # tfnrect = TestFunctionRectification(tsplaprx, dl=dl, n_dl=ndl, n_theta=nth, pix_per_dl=ppdl, pix_per_theta=ppth)
+        # tfnrect.plot_rectification()
+        #
+        # minx, miny, maxx, maxy = self.image.currNucleus.bounds
+        # r = int(max(maxx - minx, maxy - miny) / 2)
+        # self.stk.loadImages(self.image.images, xy=[n[0] for n in self.image.currNucleus.centroid.xy],
+        #                     wh=(r * self.image.pix_per_um, r * self.image.pix_per_um))
+        # self.stk.measure()
+        # self.stk.drawMeasurements(erase_bkg=True)
 
     @QtCore.pyqtSlot()
     def onMeasureButton(self):
@@ -347,9 +347,9 @@ class RingWindow(QMainWindow):
             self.currMeasurement = self.image.measurements
             self.currN = self.selectedLine
             self.currZ = self.image.zstack
-            self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
-            self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
-            self.stk.selectedZ = self.currZ
+            # self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
+            # self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
+            # self.stk.selectedZ = self.currZ
 
             try:
                 self.stk.drawMeasurements(erase_bkg=True)
@@ -364,8 +364,8 @@ class RingWindow(QMainWindow):
         self.selectedLine = self.stk.selectedLineId if self.stk.selectedLineId is not None else None
         if self.selectedLine is not None:
             self.currN = self.stk.selectedLineId
-            self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
-            self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
+            # self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
+            # self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
             self.currZ = self.stk.selectedZ
 
             self.statusbar.showMessage(f"Line {self.currN} of z-stack {self.currZ} selected.")
@@ -378,9 +378,9 @@ class RingWindow(QMainWindow):
         if self.selectedLine is not None:
             self.currN = self.selectedLine
             self.currZ = self.image.zstack
-            self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
-            self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
-            self.stk.selectedZ = self.currZ
+            # self.stk.selectedLineId = self.image.selectedLine if self.image.selectedLine is not None else 0
+            # self.stk.selectedNucId = self.image.currNucleusId if self.image.currNucleusId is not None else 0
+            # self.stk.selectedZ = self.currZ
 
             self.statusbar.showMessage("Line %d selected" % self.selectedLine)
 
@@ -397,7 +397,7 @@ if __name__ == '__main__':
     logging.info('Base dir:' + base_path)
     os.chdir(base_path)
 
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
 
     gui = RingWindow()
     gui.show()
