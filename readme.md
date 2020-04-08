@@ -9,7 +9,7 @@ If you use this software for academic purposes, please cite:
 * [Screenshots](#screenshots)
 * [Features](#features)
 * [Status](#status)
-* [Running from source](#Running from source)
+* [Running from source](#running-from-source)
 * [Contact](#contact)
 * [Licence](#licence)
 
