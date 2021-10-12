@@ -5,7 +5,7 @@ czifile==2019.7.2
 descartes==1.1.0
 matplotlib==3.0.2
 numpy==1.16.0
-opencv-python-headless==3.4.2.17
+opencv-python-headless==4.2.0.32
 pandas==0.23.4
 scikit_image==0.14.2
 scipy==1.1.0
