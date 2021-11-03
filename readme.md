@@ -53,7 +53,7 @@ Requires Python 3.6 or greater. There are also some packages that this library d
 Created by [@fabioechegaray](https://twitter.com/fabioechegaray)
 * [f.echegaray-iturra@sussex.ac.uk](mailto:f.echegaray-iturra@sussex.ac.uk)
 
-## Licence
+## License
 Contour Intensity Measurements in Python
 
 Copyright (C) 2020  The Hochegger Lab, Fabio Echegaray.
