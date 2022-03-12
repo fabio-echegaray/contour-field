@@ -1,4 +1,4 @@
-Pillow==9.0.0
+Pillow==9.0.1
 PyQt5==5.11.3
 Shapely==1.6.4.post2
 czifile==2019.7.2
